@@ -97,7 +97,7 @@ export function assertValidState(state: GameState, config: GameConfig): void {
       throw new Error(`Box ${box.id} motion target is outside the board`);
     }
   }
-  if (state.phase === 'playing') {
+  if (state.phase !== 'ended') {
     if (!isInside(config, state.player.x, state.player.y)) {
       throw new Error('Player is outside the board');
     }

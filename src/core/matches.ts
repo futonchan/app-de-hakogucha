@@ -45,13 +45,21 @@ export function findMatchIds(state: GameState, config: GameConfig): Set<BoxId> {
   return matched;
 }
 
-export function clearMatches(state: GameState, config: GameConfig, nowMs: number): number {
+export function startClearAnimation(state: GameState, config: GameConfig, nowMs: number): BoxId[] {
   state.timeMs = nowMs;
+  if (state.clearAnimation !== null) {
+    return [];
+  }
   const matchedIds = findMatchIds(state, config);
   if (matchedIds.size === 0) {
-    return 0;
+    return [];
   }
-  state.boxes = state.boxes.filter((box) => !matchedIds.has(box.id));
-  recalculateSupport(state, config, nowMs);
-  return matchedIds.size;
+  const boxIds = [...matchedIds].sort((first, second) => first - second);
+  state.phase = 'clearing';
+  state.clearAnimation = {
+    boxIds,
+    startedAtMs: nowMs,
+    durationMs: config.clearAnimationMs
+  };
+  return boxIds;
 }

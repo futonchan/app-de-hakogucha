@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGameConfig } from '../../src/config';
 import { getBoxDisplayPosition } from '../../src/core/display';
-import { advanceTo, chooseColor, chooseSpawnColumn, createBox, createGame } from '../../src/core/engine';
+import { advanceTo, chooseColor, chooseSpawnColumn, createBox, createGame, finishClearAnimation } from '../../src/core/engine';
 import { findMatchIds } from '../../src/core/matches';
 import { applyClearScore, expireComboIfNeeded } from '../../src/core/scoring';
 import type { Box, GameInput, GameState, Player } from '../../src/core/types';
@@ -328,10 +328,16 @@ describe('matches, combo and score acceptance', () => {
       createBox(6, 'blue', 8, 11)
     ]);
     const result = advanceTo(state, 1);
-    expect(result.state.boxes).toHaveLength(0);
-    expect(result.state.score).toBe(600);
-    expect(result.state.combo).toBe(1);
-    expect(result.events.filter((event) => event.type === 'boxes_cleared')).toHaveLength(1);
+    expect(result.state.phase).toBe('clearing');
+    expect(result.state.boxes).toHaveLength(6);
+    expect(result.state.score).toBe(0);
+    expect(result.events).toContainEqual({ type: 'boxes_clear_started', atMs: 1, boxIds: [1, 2, 3, 4, 5, 6], durationMs: 500 });
+
+    const finished = finishClearAnimation(result.state);
+    expect(finished.state.boxes).toHaveLength(0);
+    expect(finished.state.score).toBe(600);
+    expect(finished.state.combo).toBe(1);
+    expect(finished.events.filter((event) => event.type === 'boxes_cleared')).toHaveLength(1);
   });
 
   it('does not clear boxes while a push animation is still moving into a match', () => {
@@ -350,6 +356,11 @@ describe('matches, combo and score acceptance', () => {
     expect(state.score).toBe(0);
 
     state = advanceTo(state, 251).state;
+    expect(state.phase).toBe('clearing');
+    expect(state.boxes).toHaveLength(3);
+    expect(state.score).toBe(0);
+
+    state = finishClearAnimation(state).state;
     expect(state.boxes).toHaveLength(0);
     expect(state.score).toBe(300);
   });
@@ -363,10 +374,16 @@ describe('matches, combo and score acceptance', () => {
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
     const result = advanceTo(state, 251);
 
-    expect(result.state.boxes).toHaveLength(0);
-    expect(result.state.score).toBe(300);
+    expect(result.state.phase).toBe('clearing');
+    expect(result.state.boxes).toHaveLength(3);
+    expect(result.state.score).toBe(0);
     expect(result.events).toContainEqual({ type: 'boxes_fell', atMs: 251, boxIds: [1] });
-    expect(result.events).toContainEqual({ type: 'boxes_cleared', atMs: 251, count: 3, combo: 1, points: 300 });
+    expect(result.events).toContainEqual({ type: 'boxes_clear_started', atMs: 251, boxIds: [1, 2, 3], durationMs: 500 });
+
+    const finished = finishClearAnimation(result.state);
+    expect(finished.state.boxes).toHaveLength(0);
+    expect(finished.state.score).toBe(300);
+    expect(finished.events).toContainEqual({ type: 'boxes_cleared', atMs: 251, count: 3, combo: 1, points: 300 });
   });
 
   it('does not clear boxes while a fall animation is still moving into a match', () => {
@@ -378,6 +395,11 @@ describe('matches, combo and score acceptance', () => {
     expect(state.boxes.find((box) => box.id === 3)).toMatchObject({ x: 3, y: 10, nextFallAtMs: 250 });
 
     state = advanceTo(state, 250).state;
+    expect(state.phase).toBe('clearing');
+    expect(state.boxes).toHaveLength(3);
+    expect(state.score).toBe(0);
+
+    state = finishClearAnimation(state).state;
     expect(state.boxes).toHaveLength(0);
     expect(state.score).toBe(300);
   });
@@ -386,10 +408,16 @@ describe('matches, combo and score acceptance', () => {
     const state = stateWith([createBox(1, 'red', 1, 11), createBox(2, 'red', 2, 11), createBox(3, 'red', 3, 10, 1, 250)]);
     const result = advanceTo(state, 250);
 
-    expect(result.state.boxes).toHaveLength(0);
-    expect(result.state.score).toBe(300);
+    expect(result.state.phase).toBe('clearing');
+    expect(result.state.boxes).toHaveLength(3);
+    expect(result.state.score).toBe(0);
     expect(result.events).toContainEqual({ type: 'boxes_fell', atMs: 250, boxIds: [3] });
-    expect(result.events).toContainEqual({ type: 'boxes_cleared', atMs: 250, count: 3, combo: 1, points: 300 });
+    expect(result.events).toContainEqual({ type: 'boxes_clear_started', atMs: 250, boxIds: [1, 2, 3], durationMs: 500 });
+
+    const finished = finishClearAnimation(result.state);
+    expect(finished.state.boxes).toHaveLength(0);
+    expect(finished.state.score).toBe(300);
+    expect(finished.events).toContainEqual({ type: 'boxes_cleared', atMs: 250, count: 3, combo: 1, points: 300 });
   });
 
   it('still clears stationary matches while an unrelated box is moving', () => {
@@ -401,9 +429,53 @@ describe('matches, combo and score acceptance', () => {
     ]);
     const result = advanceTo(state, 100);
 
-    expect(result.state.boxes.map((box) => box.id)).toEqual([4]);
-    expect(result.state.score).toBe(300);
-    expect(result.events).toContainEqual({ type: 'boxes_cleared', atMs: 100, count: 3, combo: 1, points: 300 });
+    expect(result.state.phase).toBe('clearing');
+    expect(result.state.boxes.map((box) => box.id)).toEqual([1, 2, 3, 4]);
+    expect(result.state.score).toBe(0);
+    expect(result.events).toContainEqual({ type: 'boxes_clear_started', atMs: 100, boxIds: [1, 2, 3], durationMs: 500 });
+
+    const finished = finishClearAnimation(result.state);
+    expect(finished.state.boxes.map((box) => box.id)).toEqual([4]);
+    expect(finished.state.score).toBe(300);
+    expect(finished.events).toContainEqual({ type: 'boxes_cleared', atMs: 100, count: 3, combo: 1, points: 300 });
+  });
+
+  it('keeps world time, inputs, spawning, falling and combo timer stopped during clear blinking', () => {
+    const state = stateWith(
+      [
+        createBox(1, 'red', 1, 11),
+        createBox(2, 'red', 2, 11),
+        createBox(3, 'red', 3, 11),
+        createBox(4, 'blue', 1, 10)
+      ],
+      { x: 5, y: 11, facing: 'up' }
+    );
+    state.nextSpawnAtMs = 150;
+    state.combo = 1;
+    state.lastClearAtMs = 0;
+
+    const blinking = advanceTo(state, 100).state;
+    expect(blinking.phase).toBe('clearing');
+    expect(blinking.timeMs).toBe(100);
+    expect(blinking.boxes.find((box) => box.id === 4)).toMatchObject({ x: 1, y: 10, nextFallAtMs: null });
+
+    const frozen = advanceTo(blinking, 10_000, [
+      { atMs: 100, seq: 1, type: 'move', direction: 'left' },
+      { atMs: 150, seq: 2, type: 'punch' }
+    ]).state;
+    expect(frozen.phase).toBe('clearing');
+    expect(frozen.timeMs).toBe(100);
+    expect(frozen.player).toEqual({ x: 5, y: 11, facing: 'up' });
+    expect(frozen.nextSpawnAtMs).toBe(150);
+    expect(frozen.processedInputKeys).toHaveLength(0);
+    expect(frozen.combo).toBe(1);
+    expect(frozen.lastClearAtMs).toBe(0);
+    expect(frozen.boxes.find((box) => box.id === 4)).toMatchObject({ x: 1, y: 10, nextFallAtMs: null });
+
+    const finished = finishClearAnimation(frozen).state;
+    expect(finished.phase).toBe('playing');
+    expect(finished.timeMs).toBe(100);
+    expect(finished.boxes.find((box) => box.id === 4)).toMatchObject({ x: 1, y: 10, nextFallAtMs: 350 });
   });
 
   it('T-B01-T-B10 scores combo windows inclusively and expires display only', () => {

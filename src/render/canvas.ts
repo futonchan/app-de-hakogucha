@@ -1,5 +1,5 @@
 import { directionDeltas } from '../core/board';
-import { getBoxDisplayPosition } from '../core/display';
+import { getBoxDisplayPosition, getClearEffectOpacity } from '../core/display';
 import type { Box, GameConfig, GameState } from '../core/types';
 
 const colors: Record<Box['color'], string> = {
@@ -45,7 +45,7 @@ export class CanvasRenderer {
     this.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   }
 
-  draw(state: GameState): void {
+  draw(state: GameState, clearEffectElapsedMs = 0): void {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     const cell = width / this.config.columns;
@@ -62,18 +62,22 @@ export class CanvasRenderer {
     }
 
     for (const box of state.boxes) {
-      this.drawBox(box, cell, state.timeMs);
+      this.drawBox(box, cell, state.timeMs, state.clearAnimation?.boxIds.includes(box.id) === true, clearEffectElapsedMs);
     }
     this.drawPunchTarget(state, cell);
     this.drawPlayer(state, cell);
   }
 
-  private drawBox(box: Box, cell: number, nowMs: number): void {
+  private drawBox(box: Box, cell: number, nowMs: number, isClearing: boolean, clearEffectElapsedMs: number): void {
     const display = getBoxDisplayPosition(box, nowMs, this.config);
     const pad = Math.max(2, cell * 0.08);
     const x = display.x * cell + pad;
     const y = display.y * cell + pad;
     const size = cell - pad * 2;
+    this.ctx.save();
+    if (isClearing) {
+      this.ctx.globalAlpha = getClearEffectOpacity(clearEffectElapsedMs, this.config.clearAnimationMs);
+    }
     this.ctx.fillStyle = colors[box.color];
     this.ctx.fillRect(x, y, size, size);
     this.ctx.strokeStyle = box.nextFallAtMs === null && box.motion === null ? '#ffffff' : '#ffdd57';
@@ -84,6 +88,12 @@ export class CanvasRenderer {
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(box.color === 'gray' ? String(box.hp) : labels[box.color], display.x * cell + cell / 2, display.y * cell + cell / 2);
+    if (isClearing) {
+      this.ctx.globalAlpha = 0.35;
+      this.ctx.fillStyle = '#ffffff';
+      this.ctx.fillRect(x, y, size, size);
+    }
+    this.ctx.restore();
   }
 
   private drawPlayer(state: GameState, cell: number): void {

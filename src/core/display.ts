@@ -26,6 +26,14 @@ export function getBoxDisplayPosition(box: Box, nowMs: number, config: GameConfi
   return { x: box.x, y: box.y };
 }
 
+export function getClearEffectOpacity(elapsedMs: number, durationMs: number): number {
+  if (elapsedMs >= durationMs) {
+    return 0.25;
+  }
+  const blinkIndex = Math.floor(Math.max(0, elapsedMs) / 100);
+  return blinkIndex % 2 === 0 ? 1 : 0.25;
+}
+
 function progressRatio(nowMs: number, startedAtMs: number, endsAtMs: number): number {
   if (endsAtMs <= startedAtMs) {
     return 1;

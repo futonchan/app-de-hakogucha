@@ -1,5 +1,5 @@
 import { defaultGameConfig } from '../config';
-import { advanceTo, createGame } from '../core/engine';
+import { advanceTo, createGame, finishClearAnimation } from '../core/engine';
 import type { Direction, GameInput, GameState } from '../core/types';
 import { InputController } from '../input/controller';
 import { CanvasRenderer } from '../render/canvas';
@@ -18,6 +18,7 @@ export class GameRuntime {
   private gameBaseMs = 0;
   private countdownStartedAtMs = 0;
   private countdownLeftMs = 3_000;
+  private clearEffectStartedAtMs: number | null = null;
   private rafId = 0;
 
   constructor(
@@ -69,6 +70,7 @@ export class GameRuntime {
     this.state = createGame(Date.now(), defaultGameConfig);
     this.pendingInputs = [];
     this.seq = 1;
+    this.clearEffectStartedAtMs = null;
     this.phase = 'countdown';
     this.countdownLeftMs = 3_000;
     this.countdownStartedAtMs = performance.now();
@@ -115,7 +117,7 @@ export class GameRuntime {
   }
 
   private enqueueMove(direction: Direction): void {
-    if (this.phase !== 'playing') {
+    if (this.phase !== 'playing' || this.state.phase !== 'playing') {
       return;
     }
     this.pendingInputs.push({ atMs: this.state.timeMs, seq: this.seq, type: 'move', direction });
@@ -123,7 +125,7 @@ export class GameRuntime {
   }
 
   private enqueuePunch(): void {
-    if (this.phase !== 'playing') {
+    if (this.phase !== 'playing' || this.state.phase !== 'playing') {
       return;
     }
     this.pendingInputs.push({ atMs: this.state.timeMs, seq: this.seq, type: 'punch' });
@@ -146,10 +148,18 @@ export class GameRuntime {
     }
 
     if (this.phase === 'playing') {
-      const targetMs = Math.floor(this.gameBaseMs + (now - this.wallBaseMs));
-      const result = advanceTo(this.state, targetMs, this.pendingInputs, defaultGameConfig);
-      this.state = result.state;
-      this.pendingInputs = this.pendingInputs.filter((input) => !this.state.processedInputKeys.includes(`${input.atMs}:${input.seq}:${input.type}`));
+      if (this.state.phase === 'clearing') {
+        this.advanceClearEffect(now);
+      } else {
+        const targetMs = Math.floor(this.gameBaseMs + (now - this.wallBaseMs));
+        const result = advanceTo(this.state, targetMs, this.pendingInputs, defaultGameConfig);
+        this.state = result.state;
+        this.pendingInputs = this.pendingInputs.filter((input) => !this.state.processedInputKeys.includes(`${input.atMs}:${input.seq}:${input.type}`));
+        if (this.state.phase === 'clearing') {
+          this.clearEffectStartedAtMs = now;
+          this.inputController.releaseAll();
+        }
+      }
       if (this.state.phase === 'ended') {
         this.phase = 'ended';
         this.inputController.releaseAll();
@@ -163,10 +173,32 @@ export class GameRuntime {
   }
 
   private render(): void {
-    this.renderer.draw(this.state);
+    this.renderer.draw(this.state, this.clearEffectElapsedMs());
     this.get('[data-testid="score"]').textContent = String(this.state.score);
     this.get('[data-testid="time"]').textContent = (Math.max(0, defaultGameConfig.durationMs - this.state.timeMs) / 1_000).toFixed(1);
     this.get('[data-testid="combo"]').textContent = String(this.state.combo);
+  }
+
+  private advanceClearEffect(now: number): void {
+    if (this.clearEffectStartedAtMs === null) {
+      this.clearEffectStartedAtMs = now;
+    }
+    const elapsedMs = now - this.clearEffectStartedAtMs;
+    if (elapsedMs < defaultGameConfig.clearAnimationMs) {
+      return;
+    }
+    const result = finishClearAnimation(this.state, defaultGameConfig);
+    this.state = result.state;
+    this.clearEffectStartedAtMs = null;
+    this.wallBaseMs = now;
+    this.gameBaseMs = this.state.timeMs;
+  }
+
+  private clearEffectElapsedMs(): number {
+    if (this.phase !== 'playing' || this.state.phase !== 'clearing' || this.clearEffectStartedAtMs === null) {
+      return 0;
+    }
+    return performance.now() - this.clearEffectStartedAtMs;
   }
 
   private message(text: string): void {

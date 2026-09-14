@@ -23,6 +23,12 @@ export type Box = {
   motion: BoxMotion | null;
 };
 
+export type ClearAnimation = {
+  boxIds: BoxId[];
+  startedAtMs: number;
+  durationMs: number;
+};
+
 export type Player = {
   x: number;
   y: number;
@@ -33,7 +39,7 @@ export type GameInput =
   | { atMs: number; seq: number; type: 'move'; direction: Direction }
   | { atMs: number; seq: number; type: 'punch' };
 
-export type GamePhase = 'playing' | 'ended';
+export type GamePhase = 'playing' | 'clearing' | 'ended';
 
 export type GameState = {
   phase: GamePhase;
@@ -49,6 +55,7 @@ export type GameState = {
   nextBoxId: number;
   endReason: EndReason | null;
   processedInputKeys: string[];
+  clearAnimation: ClearAnimation | null;
 };
 
 export type GameConfig = {
@@ -59,6 +66,7 @@ export type GameConfig = {
   firstSpawnAtMs: number;
   fallStepMs: number;
   pushStepMs: number;
+  clearAnimationMs: number;
   comboWindowMs: number;
   minimumConnected: number;
   pointsPerMatchedBox: number;
@@ -74,6 +82,7 @@ export type GameEvent =
   | { type: 'box_punched'; atMs: number; boxId: BoxId; hp: number }
   | { type: 'box_broken'; atMs: number; boxId: BoxId }
   | { type: 'box_pushed'; atMs: number; boxId: BoxId; toX: number; toY: number }
+  | { type: 'boxes_clear_started'; atMs: number; boxIds: BoxId[]; durationMs: number }
   | { type: 'boxes_cleared'; atMs: number; count: number; combo: number; points: number }
   | { type: 'boxes_fell'; atMs: number; boxIds: BoxId[] }
   | { type: 'game_ended'; atMs: number; reason: EndReason };

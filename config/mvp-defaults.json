@@ -71,6 +71,9 @@
     "animation": {
       "fallStepAnimationMs": 250,
       "pushStepAnimationMs": 250,
+      "clearBlinkMs": 500,
+      "clearEffectRendererOnly": true,
+      "worldTimeStopsDuringClearBlink": true,
       "boxGridAndDisplayCoordinatesSeparated": true,
       "movingBoxesExcludedFromMatchClear": true
     },
@@ -152,6 +155,7 @@
         "support_and_matches",
         "spawn_and_spawn_failure",
         "support_and_matches",
+        "clear_blink_500ms_without_world_time",
         "combo_and_score"
       ],
       "onEarlyEnd": "score_only_match_clears_already_completed_before_end"

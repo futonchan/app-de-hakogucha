@@ -2,7 +2,7 @@ import { assertValidState, buildOccupancy, cellKey, recalculateSupport } from '.
 import { nextRandom, normalizeSeed } from './random';
 import { moveOrPush, punch } from './actions';
 import { applyGravity } from './gravity';
-import { clearMatches } from './matches';
+import { startClearAnimation } from './matches';
 import { applyClearScore, expireComboIfNeeded } from './scoring';
 import { defaultGameConfig } from '../config';
 import type { Box, BoxColor, GameConfig, GameEvent, GameInput, GameState } from './types';
@@ -21,7 +21,8 @@ export function createGame(seed = 1, config: GameConfig = defaultGameConfig): Ga
     rngState: normalizeSeed(seed),
     nextBoxId: 1,
     endReason: null,
-    processedInputKeys: []
+    processedInputKeys: [],
+    clearAnimation: null
   };
 }
 
@@ -30,7 +31,8 @@ export function cloneState(state: GameState): GameState {
     ...state,
     player: { ...state.player },
     boxes: state.boxes.map((box) => ({ ...box, motion: box.motion ? { ...box.motion } : null })),
-    processedInputKeys: [...state.processedInputKeys]
+    processedInputKeys: [...state.processedInputKeys],
+    clearAnimation: state.clearAnimation ? { ...state.clearAnimation, boxIds: [...state.clearAnimation.boxIds] } : null
   };
 }
 
@@ -59,7 +61,7 @@ export function advanceTo(
   const state = cloneState(originalState);
   const events: GameEvent[] = [];
   const targetMs = Math.max(state.timeMs, Math.min(targetGameTimeMs, config.durationMs));
-  if (state.phase === 'ended') {
+  if (state.phase !== 'playing') {
     return { state, events };
   }
 
@@ -139,32 +141,34 @@ function processAt(
     return;
   }
 
-  let clearedCount = 0;
   processInputsAt(state, config, inputs, events, nowMs);
-  clearedCount += clearMatches(state, config, nowMs);
+  if (tryStartClearAnimation(state, config, events, nowMs)) {
+    return;
+  }
 
   const fallResult = applyGravity(state, config, nowMs);
   if (fallResult.movedIds.length > 0) {
     events.push({ type: 'boxes_fell', atMs: nowMs, boxIds: fallResult.movedIds });
   }
   if (fallResult.crushed) {
-    scoreClears(state, config, events, nowMs, clearedCount);
     endGame(state, events, nowMs, 'crushed');
     return;
   }
 
-  clearedCount += clearMatches(state, config, nowMs);
+  if (tryStartClearAnimation(state, config, events, nowMs)) {
+    return;
+  }
   if (state.nextSpawnAtMs === nowMs) {
     const spawnResult = spawnBox(state, config, events, nowMs);
     if (spawnResult !== null) {
-      scoreClears(state, config, events, nowMs, clearedCount);
       endGame(state, events, nowMs, spawnResult);
       return;
     }
   }
 
-  clearedCount += clearMatches(state, config, nowMs);
-  scoreClears(state, config, events, nowMs, clearedCount);
+  if (tryStartClearAnimation(state, config, events, nowMs)) {
+    return;
+  }
   expireComboIfNeeded(state, config, nowMs);
 }
 
@@ -244,6 +248,38 @@ function scoreClears(
   if (points > 0) {
     events.push({ type: 'boxes_cleared', atMs: nowMs, count: clearedCount, combo: state.combo, points });
   }
+}
+
+export function finishClearAnimation(
+  originalState: GameState,
+  config: GameConfig = defaultGameConfig
+): { state: GameState; events: GameEvent[] } {
+  const state = cloneState(originalState);
+  const events: GameEvent[] = [];
+  if (state.phase !== 'clearing' || state.clearAnimation === null) {
+    return { state, events };
+  }
+
+  const nowMs = state.timeMs;
+  const clearIds = new Set(state.clearAnimation.boxIds);
+  const clearedCount = state.boxes.filter((box) => clearIds.has(box.id)).length;
+  state.boxes = state.boxes.filter((box) => !clearIds.has(box.id));
+  state.clearAnimation = null;
+  state.phase = 'playing';
+  recalculateSupport(state, config, nowMs);
+  scoreClears(state, config, events, nowMs, clearedCount);
+  expireComboIfNeeded(state, config, nowMs);
+  assertValidState(state, config);
+  return { state, events };
+}
+
+function tryStartClearAnimation(state: GameState, config: GameConfig, events: GameEvent[], nowMs: number): boolean {
+  const boxIds = startClearAnimation(state, config, nowMs);
+  if (boxIds.length === 0) {
+    return false;
+  }
+  events.push({ type: 'boxes_clear_started', atMs: nowMs, boxIds, durationMs: config.clearAnimationMs });
+  return true;
 }
 
 function endGame(state: GameState, events: GameEvent[], nowMs: number, reason: 'time_up' | 'crushed' | 'no_spawn_column'): void {

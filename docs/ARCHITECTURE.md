@@ -90,9 +90,10 @@ type Box = {
 
 type Player = { x: number; y: number; facing: Direction };
 type EndReason = 'time_up' | 'crushed' | 'no_spawn_column';
+type ClearAnimation = { boxIds: BoxId[]; startedAtMs: number; durationMs: number };
 
 type GameState = {
-  phase: 'playing' | 'paused' | 'ended';
+  phase: 'playing' | 'clearing' | 'ended';
   timeMs: number;             // 整数。PLAYINGとして進んだゲーム時刻
   boxes: Box[];              // 箱配置の唯一の正本
   player: Player;
@@ -104,6 +105,7 @@ type GameState = {
   rngState: number;           // seed付き疑似乱数器の状態
   nextBoxId: number;
   endReason: EndReason | null;
+  clearAnimation: ClearAnimation | null;
 };
 
 type GameInput =
@@ -135,12 +137,18 @@ advanceTo(state, targetGameTimeMs, orderedInputs, config): {
   state: GameState;
   events: GameEvent[];
 }
+finishClearAnimation(state, config): {
+  state: GameState;
+  events: GameEvent[];
+}
 ```
 
 `advanceTo`は指定されたゲーム時刻まで、入力・落下期限・生成期限・制限時刻を**時系列順**に処理する。
 外部の`Date.now()`、`performance.now()`、`Math.random()`を内部から呼ばない。
 同じ設定・初期状態・seed・入力列なら、更新を呼ぶ回数を変えても同じ結果にする。
-イベントは`box_punched`、`box_broken`、`boxes_cleared`、`game_ended`等の最小限でよい。
+`clearing`中の`advanceTo`はゲーム時刻を進めず、入力・生成・落下・コンボ失効を処理しない。
+点滅0.5秒の経過はRuntimeが壁時計で測り、完了時に`finishClearAnimation`を呼ぶ。
+イベントは`box_punched`、`box_broken`、`boxes_clear_started`、`boxes_cleared`、`game_ended`等の最小限でよい。
 
 ## 5. 時刻tでの処理順（P-10）
 
@@ -148,15 +156,14 @@ advanceTo(state, targetGameTimeMs, orderedInputs, config): {
 
 1. tが60,000ms以上なら時間切れを確定し、以後の処理を行わない。
 2. tの入力を処理する。同時刻内は移動系を先、パンチを後、その中では`seq`順とする。
-3. 支えを再計算し、移動中または同時刻に完了予定の箱を除いた停止中の同色連結を検出・一括消去し、再び支えを更新する。
+3. 支えを再計算し、移動中または同時刻に完了予定の箱を除いた停止中の同色連結を検出する。対象があれば`clearing`へ入り、この時刻のワールド処理を止める。
 4. tに期限が来た落下アニメーションまたはプッシュアニメーションを確定する。落下確定で圧死ならその場で終了する。
-5. 支えを更新し、着地・プッシュ完了などで生じた連結消去を処理する。ただし新しく移動中になった箱は消去対象から外す。
+5. 支えを更新し、着地・プッシュ完了などで生じた連結消去を検出する。対象があれば`clearing`へ入り、この時刻のワールド処理を止める。
 6. tが生成期限なら、現在の盤面で生成する。空き列なし／生成マスのプレイヤー衝突なら終了する。
-7. 支え・連結消去を更新する。
-8. この時刻の連結消去をまとめ、コンボを1回だけ更新して加点し、最大コンボを更新する。
+7. 支え・連結消去を更新する。対象があれば`clearing`へ入り、この時刻のワールド処理を止める。
+8. 0.5秒の点滅完了後、`finishClearAnimation`で対象箱を削除し、コンボを1回だけ更新して加点し、最大コンボを更新する。
 
-入力や落下の前段で完了した消去と、後段の終了が同じ時刻に起きる場合は、
-**終了前に実際に除去済みの連結消去だけ**を1イベントにまとめて加点して終了する。
+入力や落下の前段で消去対象が確定した場合は、その時点で`clearing`に入り、後段の落下・生成・終了判定はワールド再開後に扱う。
 圧死した落下の後は新しい消去を判定しない。時間切れは最初に終わるので加点もない。
 この扱いを専用テストで固定し、早期returnで加点を失う／死亡後に救済されるバグを避ける。
 
@@ -196,10 +203,13 @@ y=11の箱 → 支えあり
 落下またはプッシュの移動途中にある箱は、連結消去の探索対象から外す。
 盤面全体の判定を止めるのではなく、停止中で支えのある箱だけを対象に判定する。
 移動アニメーションが完了し、グリッド座標を確定した箱は、その直後のスナップショットで判定対象へ戻す。R-23。
+消去対象のIDは`clearAnimation.boxIds`へ保持し、箱は即削除しない。
+Runtimeは壁時計で0.5秒の点滅を描画し、その間coreの`timeMs`を進めない。
+点滅完了時に対象箱を削除し、同じゲーム時刻でコンボ・スコアを更新してから支えを再計算する。R-24。
 
-1時刻の処理で複数回消去判定をしても、除去箱IDを重複なく集約して1回だけコンボを更新する。
+1時刻の処理で複数の同色成分が見つかっても、除去箱IDを重複なく集約して1回だけコンボを更新する。
 パンチの`box_broken`はこの集合へ入れない。
-演出を付ける場合も論理消去を遅らせず、演出中の箱が衝突・得点に残らないようにする。
+点滅中の箱は描画対象として残るが、ワールド時間が止まっているため衝突・入力・生成・落下は進まない。
 
 ## 8. 時計と描画
 
@@ -219,6 +229,7 @@ Runtimeが単調増加の外部時刻からゲームの進行時間を作り、c
 箱の落下・プッシュは250msで1マスの等速補間として表示する。R-23。
 落下のグリッド座標は落下期限時刻に次マスへ確定する。プッシュのグリッド座標も`motion.endsAtMs`で確定する。
 補間アニメーション中の表示座標は衝突・連結消去の正本にしない。
+消去点滅はRenderer側のopacityやオーバーレイで実装し、箱画像や仮ラベルに依存させない。R-24。
 物理エンジンを追加して実装を肥大化させない。
 
 ## 9. タッチ入力
