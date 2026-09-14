@@ -1,0 +1,56 @@
+import { buildOccupancy, cellKey, directionDeltas, isInside, recalculateSupport } from './board';
+import type { Direction, GameConfig, GameEvent, GameState } from './types';
+
+export function moveOrPush(state: GameState, config: GameConfig, nowMs: number, direction: Direction): void {
+  state.player.facing = direction;
+  const delta = directionDeltas[direction];
+  const targetX = state.player.x + delta.dx;
+  const targetY = state.player.y + delta.dy;
+  if (!isInside(config, targetX, targetY)) {
+    return;
+  }
+
+  const occupancy = buildOccupancy(state.boxes);
+  const targetBox = occupancy.get(cellKey(targetX, targetY));
+  if (!targetBox) {
+    state.player.x = targetX;
+    state.player.y = targetY;
+    return;
+  }
+  if (targetBox.nextFallAtMs !== null) {
+    return;
+  }
+
+  const pushedX = targetBox.x + delta.dx;
+  const pushedY = targetBox.y + delta.dy;
+  if (!isInside(config, pushedX, pushedY) || occupancy.has(cellKey(pushedX, pushedY))) {
+    return;
+  }
+
+  targetBox.x = pushedX;
+  targetBox.y = pushedY;
+  recalculateSupport(state, config, nowMs);
+}
+
+export function punch(state: GameState, config: GameConfig, nowMs: number, events: GameEvent[]): void {
+  const delta = directionDeltas[state.player.facing];
+  const targetX = state.player.x + delta.dx;
+  const targetY = state.player.y + delta.dy;
+  if (!isInside(config, targetX, targetY)) {
+    return;
+  }
+
+  const occupancy = buildOccupancy(state.boxes);
+  const targetBox = occupancy.get(cellKey(targetX, targetY));
+  if (!targetBox) {
+    return;
+  }
+
+  targetBox.hp -= 1;
+  events.push({ type: 'box_punched', atMs: nowMs, boxId: targetBox.id, hp: Math.max(0, targetBox.hp) });
+  if (targetBox.hp <= 0) {
+    state.boxes = state.boxes.filter((box) => box.id !== targetBox.id);
+    events.push({ type: 'box_broken', atMs: nowMs, boxId: targetBox.id });
+  }
+  recalculateSupport(state, config, nowMs);
+}

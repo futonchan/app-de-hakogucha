@@ -1,0 +1,214 @@
+{
+  "metadata": {
+    "documentVersion": "0.4",
+    "preparedOn": "2026-09-14",
+    "projectName": "アプリでハコグチャ（仮）",
+    "purpose": "Codexへの設定資料。ゲーム本体・実装済み設定ローダーは含まない。",
+    "approvalMeaning": "confirmedはユーザー承認済み。provisionalは未承認の初期実装案。",
+    "decisionSource": "docs/DECISIONS.md"
+  },
+  "confirmed": {
+    "platform": {
+      "players": 1,
+      "device": "iPhone",
+      "browser": "Safari",
+      "orientation": "portrait",
+      "placeholderGraphics": true
+    },
+    "board": {
+      "columns": 10,
+      "rows": 12
+    },
+    "durationMs": 60000,
+    "movement": {
+      "directions": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ],
+      "stepCells": 1,
+      "directionInputAttemptsPush": true
+    },
+    "push": {
+      "distanceCells": 1,
+      "blockedByOtherBox": true,
+      "playerStaysOnSuccessfulPush": true,
+      "fallingBoxesCanBePushed": false
+    },
+    "punch": {
+      "rangeCells": 1,
+      "target": "facing_adjacent_cell",
+      "playerStaysAfterPunch": true
+    },
+    "boxTypes": {
+      "red": {
+        "initialHp": 1,
+        "spawnProbability": 0.25
+      },
+      "blue": {
+        "initialHp": 1,
+        "spawnProbability": 0.25
+      },
+      "green": {
+        "initialHp": 1,
+        "spawnProbability": 0.25
+      },
+      "gray": {
+        "initialHp": 3,
+        "spawnProbability": 0.25
+      }
+    },
+    "spawn": {
+      "intervalMs": 1000,
+      "columnSelection": "random_among_box_free_top_cells"
+    },
+    "fall": {
+      "stepMs": 250,
+      "stepCells": 1,
+      "sameSpeedAfterSupportLoss": true
+    },
+    "matching": {
+      "sameColor": true,
+      "minimumConnected": 3,
+      "adjacency": "orthogonal"
+    },
+    "combo": {
+      "windowMs": 2000,
+      "event": "connected_match_clear"
+    },
+    "endConditions": [
+      "time_up",
+      "crushed",
+      "no_spawn_column"
+    ]
+  },
+  "provisional": {
+    "P-01": {
+      "initialBoxLayout": "empty",
+      "playerStart": {
+        "x": 4,
+        "y": 11,
+        "facing": "up"
+      },
+      "countdownMs": 3000,
+      "firstSpawnAtMs": 1000
+    },
+    "P-02": {
+      "playerGravity": false
+    },
+    "P-03": {
+      "pushDirections": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ],
+      "playerFollowsPushedBox": false,
+      "turnEvenWhenBlocked": true
+    },
+    "P-04": {
+      "canPunchFallingBox": true,
+      "canPushFallingBox": false,
+      "collisionCoordinates": "logical_grid_cells"
+    },
+    "P-05": {
+      "grayCanMatchClear": true,
+      "grayHpAffectsColorMatch": false
+    },
+    "P-06": {
+      "matchEligibility": "supported_boxes_only"
+    },
+    "P-07": {
+      "firstCombo": 1,
+      "aggregateClearsAtSameTimestamp": true,
+      "punchBreakRefreshesCombo": false,
+      "windowInclusive": true
+    },
+    "P-08": {
+      "pointsPerMatchedBox": 100,
+      "comboMultiplierBase": 1.0,
+      "comboMultiplierStep": 0.5,
+      "pointsPerPunchBreak": 0
+    },
+    "P-09": {
+      "firstFallAfterSupportLossMs": 250,
+      "fallSchedule": "per_box",
+      "preserveDueTimeWhenStillUnsupportedAfterPush": true,
+      "stackMovement": "bottom_up_plan_atomic_commit"
+    },
+    "P-10": {
+      "sameTimestampOrder": [
+        "deadline",
+        "inputs_move_before_punch",
+        "support_and_matches",
+        "gravity_and_crush",
+        "support_and_matches",
+        "spawn_and_spawn_failure",
+        "support_and_matches",
+        "combo_and_score"
+      ],
+      "onEarlyEnd": "score_only_match_clears_already_completed_before_end"
+    },
+    "P-11": {
+      "checkFullTopOnSpawnOnly": true,
+      "excludePlayerFromColumnCandidates": false,
+      "spawnOntoPlayer": "crushed"
+    },
+    "P-12": {
+      "moveInitialDelayMs": 250,
+      "moveRepeatMs": 100,
+      "pushExtraDelayMs": 0,
+      "punchAutoRepeat": false
+    },
+    "P-13": {
+      "manualPause": true,
+      "autoPauseOnHidden": true,
+      "autoPauseOnBlur": true,
+      "autoPauseOnLandscape": true,
+      "explicitResumeRequired": true,
+      "freezeAllGameplayTimers": true
+    },
+    "P-14": {
+      "deadlineWinsAtExactDuration": true,
+      "spawnAtDeadline": false,
+      "scoreAtDeadline": false
+    },
+    "P-15": {
+      "controls": "left_dpad_right_punch",
+      "targetDirectionHitAreaCssPx": 56,
+      "minimumDirectionHitAreaCssPx": 48,
+      "showFacing": true,
+      "showPunchTarget": true,
+      "showGrayHp": true
+    },
+    "P-16": {
+      "language": "TypeScript",
+      "renderer": "Canvas2D",
+      "ui": "HTML_CSS",
+      "buildTool": "Vite",
+      "unitTestTool": "Vitest",
+      "browserTestTool": "Playwright",
+      "runtimeServerRequired": false
+    },
+    "P-17": {
+      "randomSource": "seeded_prng",
+      "drawOrder": [
+        "column",
+        "color"
+      ],
+      "newSeedOnRetry": true
+    },
+    "P-18": {
+      "xMarkedBoxes": false,
+      "autoDifficultyRamp": false,
+      "spawnWarning": false,
+      "speedSettingsUi": false,
+      "sound": false,
+      "haptics": false,
+      "persistentHighScore": false,
+      "pwa": false,
+      "nativeWrapper": false
+    }
+  }
+}

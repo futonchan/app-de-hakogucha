@@ -1,0 +1,249 @@
+import { assertValidState, buildOccupancy, cellKey, recalculateSupport } from './board';
+import { nextRandom, normalizeSeed } from './random';
+import { moveOrPush, punch } from './actions';
+import { applyGravity } from './gravity';
+import { clearMatches } from './matches';
+import { applyClearScore, expireComboIfNeeded } from './scoring';
+import { defaultGameConfig } from '../config';
+import type { Box, BoxColor, GameConfig, GameEvent, GameInput, GameState } from './types';
+
+export function createGame(seed = 1, config: GameConfig = defaultGameConfig): GameState {
+  return {
+    phase: 'playing',
+    timeMs: 0,
+    boxes: [],
+    player: { ...config.playerStart },
+    score: 0,
+    combo: 0,
+    maxCombo: 0,
+    lastClearAtMs: null,
+    nextSpawnAtMs: config.firstSpawnAtMs,
+    rngState: normalizeSeed(seed),
+    nextBoxId: 1,
+    endReason: null,
+    processedInputKeys: []
+  };
+}
+
+export function cloneState(state: GameState): GameState {
+  return {
+    ...state,
+    player: { ...state.player },
+    boxes: state.boxes.map((box) => ({ ...box })),
+    processedInputKeys: [...state.processedInputKeys]
+  };
+}
+
+export function createBox(id: number, color: BoxColor, x: number, y: number, hp?: number, nextFallAtMs: number | null = null): Box {
+  return { id, color, x, y, hp: hp ?? defaultGameConfig.boxHp[color], nextFallAtMs };
+}
+
+export function chooseSpawnColumn(openColumns: number[], randomValue: number): number {
+  return openColumns[Math.min(openColumns.length - 1, Math.floor(randomValue * openColumns.length))]!;
+}
+
+export function chooseColor(colors: BoxColor[], randomValue: number): BoxColor {
+  return colors[Math.min(colors.length - 1, Math.floor(randomValue * colors.length))]!;
+}
+
+export function inputKey(input: GameInput): string {
+  return `${input.atMs}:${input.seq}:${input.type}`;
+}
+
+export function advanceTo(
+  originalState: GameState,
+  targetGameTimeMs: number,
+  orderedInputs: GameInput[] = [],
+  config: GameConfig = defaultGameConfig
+): { state: GameState; events: GameEvent[] } {
+  const state = cloneState(originalState);
+  const events: GameEvent[] = [];
+  const targetMs = Math.max(state.timeMs, Math.min(targetGameTimeMs, config.durationMs));
+  if (state.phase === 'ended') {
+    return { state, events };
+  }
+
+  while (state.phase === 'playing') {
+    const nextTime = findNextTime(state, config, orderedInputs, targetMs);
+    if (nextTime === null) {
+      if (targetMs > state.timeMs) {
+        state.timeMs = targetMs;
+        expireComboIfNeeded(state, config, state.timeMs);
+      }
+      break;
+    }
+    processAt(state, config, orderedInputs, events, nextTime);
+    if (nextTime >= targetMs && !hasDueWorkAtOrBefore(state, orderedInputs, targetMs)) {
+      break;
+    }
+  }
+
+  assertValidState(state, config);
+  return { state, events };
+}
+
+function findNextTime(state: GameState, config: GameConfig, inputs: GameInput[], targetMs: number): number | null {
+  const times: number[] = [];
+  if (targetMs > state.timeMs) {
+    times.push(targetMs);
+  }
+  if (config.durationMs >= state.timeMs && config.durationMs <= targetMs) {
+    times.push(config.durationMs);
+  }
+  if (state.nextSpawnAtMs >= state.timeMs && state.nextSpawnAtMs <= targetMs) {
+    times.push(state.nextSpawnAtMs);
+  }
+  for (const box of state.boxes) {
+    if (box.nextFallAtMs !== null && box.nextFallAtMs >= state.timeMs && box.nextFallAtMs <= targetMs) {
+      times.push(box.nextFallAtMs);
+    }
+  }
+  for (const input of inputs) {
+    if (!state.processedInputKeys.includes(inputKey(input)) && input.atMs >= state.timeMs && input.atMs <= targetMs) {
+      times.push(input.atMs);
+    }
+  }
+  if (times.length === 0) {
+    return null;
+  }
+  return Math.min(...times);
+}
+
+function hasDueWorkAtOrBefore(state: GameState, inputs: GameInput[], targetMs: number): boolean {
+  if (state.nextSpawnAtMs <= targetMs) {
+    return true;
+  }
+  if (state.boxes.some((box) => box.nextFallAtMs !== null && box.nextFallAtMs <= targetMs)) {
+    return true;
+  }
+  return inputs.some((input) => !state.processedInputKeys.includes(inputKey(input)) && input.atMs <= targetMs);
+}
+
+function processAt(
+  state: GameState,
+  config: GameConfig,
+  inputs: GameInput[],
+  events: GameEvent[],
+  nowMs: number
+): void {
+  state.timeMs = nowMs;
+
+  if (nowMs >= config.durationMs) {
+    endGame(state, events, nowMs, 'time_up');
+    return;
+  }
+
+  let clearedCount = 0;
+  processInputsAt(state, config, inputs, events, nowMs);
+  clearedCount += clearMatches(state, config, nowMs);
+
+  const fallResult = applyGravity(state, config, nowMs);
+  if (fallResult.movedIds.length > 0) {
+    events.push({ type: 'boxes_fell', atMs: nowMs, boxIds: fallResult.movedIds });
+  }
+  if (fallResult.crushed) {
+    scoreClears(state, config, events, nowMs, clearedCount);
+    endGame(state, events, nowMs, 'crushed');
+    return;
+  }
+
+  clearedCount += clearMatches(state, config, nowMs);
+  if (state.nextSpawnAtMs === nowMs) {
+    const spawnResult = spawnBox(state, config, events, nowMs);
+    if (spawnResult !== null) {
+      scoreClears(state, config, events, nowMs, clearedCount);
+      endGame(state, events, nowMs, spawnResult);
+      return;
+    }
+  }
+
+  clearedCount += clearMatches(state, config, nowMs);
+  scoreClears(state, config, events, nowMs, clearedCount);
+  expireComboIfNeeded(state, config, nowMs);
+}
+
+function processInputsAt(
+  state: GameState,
+  config: GameConfig,
+  inputs: GameInput[],
+  events: GameEvent[],
+  nowMs: number
+): void {
+  const dueInputs = inputs
+    .filter((input) => input.atMs === nowMs && !state.processedInputKeys.includes(inputKey(input)))
+    .sort((first, second) => {
+      if (first.type !== second.type) {
+        return first.type === 'move' ? -1 : 1;
+      }
+      return first.seq - second.seq;
+    });
+
+  for (const input of dueInputs) {
+    state.processedInputKeys.push(inputKey(input));
+    if (input.type === 'move') {
+      moveOrPush(state, config, nowMs, input.direction);
+    } else {
+      punch(state, config, nowMs, events);
+    }
+  }
+}
+
+function spawnBox(state: GameState, config: GameConfig, events: GameEvent[], nowMs: number): 'crushed' | 'no_spawn_column' | null {
+  const occupancy = buildOccupancy(state.boxes);
+  const openColumns: number[] = [];
+  for (let x = 0; x < config.columns; x += 1) {
+    if (!occupancy.has(cellKey(x, 0))) {
+      openColumns.push(x);
+    }
+  }
+  if (openColumns.length === 0) {
+    return 'no_spawn_column';
+  }
+
+  const columnDraw = nextRandom(state.rngState);
+  state.rngState = columnDraw.state;
+  const colorDraw = nextRandom(state.rngState);
+  state.rngState = colorDraw.state;
+  const x = chooseSpawnColumn(openColumns, columnDraw.value);
+  const color = chooseColor(config.boxColors, colorDraw.value);
+  const box: Box = {
+    id: state.nextBoxId,
+    color,
+    hp: config.boxHp[color],
+    x,
+    y: 0,
+    nextFallAtMs: null
+  };
+  state.nextBoxId += 1;
+  state.nextSpawnAtMs += config.spawnIntervalMs;
+  state.boxes.push(box);
+  events.push({ type: 'box_spawned', atMs: nowMs, box: { ...box } });
+  recalculateSupport(state, config, nowMs);
+
+  if (state.player.x === x && state.player.y === 0) {
+    return 'crushed';
+  }
+  return null;
+}
+
+function scoreClears(
+  state: GameState,
+  config: GameConfig,
+  events: GameEvent[],
+  nowMs: number,
+  clearedCount: number
+): void {
+  const points = applyClearScore(state, config, nowMs, clearedCount);
+  if (points > 0) {
+    events.push({ type: 'boxes_cleared', atMs: nowMs, count: clearedCount, combo: state.combo, points });
+  }
+}
+
+function endGame(state: GameState, events: GameEvent[], nowMs: number, reason: 'time_up' | 'crushed' | 'no_spawn_column'): void {
+  if (state.phase === 'ended') {
+    return;
+  }
+  state.phase = 'ended';
+  state.endReason = reason;
+  events.push({ type: 'game_ended', atMs: nowMs, reason });
+}

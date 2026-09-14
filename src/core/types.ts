@@ -1,0 +1,66 @@
+export type Direction = 'up' | 'down' | 'left' | 'right';
+export type BoxColor = 'red' | 'blue' | 'green' | 'gray';
+export type BoxId = number;
+export type EndReason = 'time_up' | 'crushed' | 'no_spawn_column';
+
+export type Box = {
+  id: BoxId;
+  color: BoxColor;
+  hp: number;
+  x: number;
+  y: number;
+  nextFallAtMs: number | null;
+};
+
+export type Player = {
+  x: number;
+  y: number;
+  facing: Direction;
+};
+
+export type GameInput =
+  | { atMs: number; seq: number; type: 'move'; direction: Direction }
+  | { atMs: number; seq: number; type: 'punch' };
+
+export type GamePhase = 'playing' | 'ended';
+
+export type GameState = {
+  phase: GamePhase;
+  timeMs: number;
+  boxes: Box[];
+  player: Player;
+  score: number;
+  combo: number;
+  maxCombo: number;
+  lastClearAtMs: number | null;
+  nextSpawnAtMs: number;
+  rngState: number;
+  nextBoxId: number;
+  endReason: EndReason | null;
+  processedInputKeys: string[];
+};
+
+export type GameConfig = {
+  columns: number;
+  rows: number;
+  durationMs: number;
+  spawnIntervalMs: number;
+  firstSpawnAtMs: number;
+  fallStepMs: number;
+  comboWindowMs: number;
+  minimumConnected: number;
+  pointsPerMatchedBox: number;
+  comboMultiplierBase: number;
+  comboMultiplierStep: number;
+  boxHp: Record<BoxColor, number>;
+  boxColors: BoxColor[];
+  playerStart: Player;
+};
+
+export type GameEvent =
+  | { type: 'box_spawned'; atMs: number; box: Box }
+  | { type: 'box_punched'; atMs: number; boxId: BoxId; hp: number }
+  | { type: 'box_broken'; atMs: number; boxId: BoxId }
+  | { type: 'boxes_cleared'; atMs: number; count: number; combo: number; points: number }
+  | { type: 'boxes_fell'; atMs: number; boxIds: BoxId[] }
+  | { type: 'game_ended'; atMs: number; reason: EndReason };

@@ -1,0 +1,207 @@
+:root {
+  color: #f7f7fb;
+  background: #0b1020;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  background: linear-gradient(180deg, #0b1020, #151a2e);
+  overscroll-behavior: none;
+}
+
+button {
+  border: 0;
+  border-radius: 18px;
+  color: #0b1020;
+  background: #f7f7fb;
+  font: inherit;
+  font-weight: 800;
+  min-width: 48px;
+  min-height: 48px;
+  box-shadow: 0 6px 0 #9aa0aa;
+}
+
+button:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 #9aa0aa;
+}
+
+button:disabled {
+  opacity: 0.5;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  position: relative;
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.hud div {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 8px 4px;
+}
+
+.hud strong {
+  display: block;
+  font-size: 20px;
+}
+
+.board-panel {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+
+canvas {
+  border: 3px solid #f7f7fb;
+  border-radius: 12px;
+  max-width: 100%;
+  background: #101820;
+}
+
+.message-panel {
+  position: absolute;
+  inset: 72px 16px auto;
+  z-index: 2;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(11, 16, 32, 0.94);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  text-align: center;
+}
+
+.message-panel[hidden],
+[hidden] {
+  display: none !important;
+}
+
+.message-panel h1,
+.message-panel p {
+  margin: 0;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'dpad punch'
+    'actions actions';
+  gap: 10px;
+  align-items: center;
+}
+
+.dpad {
+  grid-area: dpad;
+  width: min(48vw, 188px);
+  height: min(48vw, 188px);
+  min-width: 156px;
+  min-height: 156px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 6px;
+  touch-action: none;
+  user-select: none;
+}
+
+.dpad [data-dir='up'] {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dpad [data-dir='left'] {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dpad span {
+  grid-column: 2;
+  grid-row: 2;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dpad [data-dir='right'] {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.dpad [data-dir='down'] {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.punch-button {
+  grid-area: punch;
+  width: min(36vw, 136px);
+  height: min(36vw, 136px);
+  min-width: 112px;
+  min-height: 112px;
+  border-radius: 999px;
+  background: #ffd166;
+  touch-action: none;
+}
+
+.side-actions {
+  grid-area: actions;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.side-actions button {
+  min-height: 42px;
+  box-shadow: none;
+  border-radius: 14px;
+}
+
+.help {
+  font-size: 12px;
+  line-height: 1.35;
+  color: #d5d8e2;
+}
+
+.help p {
+  margin: 2px 0;
+}
+
+@media (orientation: landscape) {
+  .app-shell::before {
+    content: '縦持ちに戻して再開してください';
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    background: rgba(11, 16, 32, 0.96);
+    font-size: 22px;
+    font-weight: 800;
+    text-align: center;
+    padding: 24px;
+  }
+}
