@@ -88,12 +88,28 @@ export class CanvasRenderer {
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(box.color === 'gray' ? String(box.hp) : labels[box.color], display.x * cell + cell / 2, display.y * cell + cell / 2);
+    if (box.unbreakable) {
+      this.drawUnbreakableMark(x, y, size);
+    }
     if (isClearing) {
       this.ctx.globalAlpha = 0.35;
       this.ctx.fillStyle = '#ffffff';
       this.ctx.fillRect(x, y, size, size);
     }
     this.ctx.restore();
+  }
+
+  private drawUnbreakableMark(x: number, y: number, size: number): void {
+    const inset = size * 0.22;
+    this.ctx.strokeStyle = '#111111';
+    this.ctx.lineWidth = Math.max(3, size * 0.1);
+    this.ctx.lineCap = 'round';
+    this.ctx.beginPath();
+    this.ctx.moveTo(x + inset, y + inset);
+    this.ctx.lineTo(x + size - inset, y + size - inset);
+    this.ctx.moveTo(x + size - inset, y + inset);
+    this.ctx.lineTo(x + inset, y + size - inset);
+    this.ctx.stroke();
   }
 
   private drawPlayer(state: GameState, cell: number): void {

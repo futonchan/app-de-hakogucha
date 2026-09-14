@@ -5,6 +5,7 @@ type TimerId = ReturnType<typeof setTimeout>;
 export type InputCallbacks = {
   move: (direction: Direction) => void;
   punch: () => void;
+  release: (direction: Direction | null) => void;
   pause: () => void;
 };
 
@@ -13,6 +14,7 @@ export class InputController {
   private punchPointerId: number | null = null;
   private currentDirection: Direction | null = null;
   private repeatTimer: TimerId | null = null;
+  private activeMoveKeys = new Set<string>();
 
   constructor(
     private readonly dpad: HTMLElement,
@@ -26,6 +28,7 @@ export class InputController {
     this.movePointerId = null;
     this.punchPointerId = null;
     this.currentDirection = null;
+    this.activeMoveKeys.clear();
     this.clearRepeat();
   }
 
@@ -40,6 +43,7 @@ export class InputController {
     this.punchButton.addEventListener('pointercancel', (event) => this.onPunchUp(event));
     this.punchButton.addEventListener('lostpointercapture', (event) => this.onPunchUp(event));
     window.addEventListener('keydown', (event) => this.onKeyDown(event));
+    window.addEventListener('keyup', (event) => this.onKeyUp(event));
   }
 
   private onDpadDown(event: PointerEvent): void {
@@ -64,9 +68,11 @@ export class InputController {
     if (event.pointerId !== this.movePointerId) {
       return;
     }
+    const releasedDirection = this.currentDirection;
     this.movePointerId = null;
     this.currentDirection = null;
     this.clearRepeat();
+    this.callbacks.release(releasedDirection);
   }
 
   private onPunchDown(event: PointerEvent): void {
@@ -103,6 +109,7 @@ export class InputController {
     const direction = directionByKey[event.key];
     if (direction) {
       event.preventDefault();
+      this.activeMoveKeys.add(event.key);
       this.callbacks.move(direction);
       return;
     }
@@ -115,14 +122,46 @@ export class InputController {
     }
   }
 
+  private onKeyUp(event: KeyboardEvent): void {
+    const directionByKey: Partial<Record<string, Direction>> = {
+      ArrowUp: 'up',
+      w: 'up',
+      W: 'up',
+      ArrowDown: 'down',
+      s: 'down',
+      S: 'down',
+      ArrowLeft: 'left',
+      a: 'left',
+      A: 'left',
+      ArrowRight: 'right',
+      d: 'right',
+      D: 'right'
+    };
+    const direction = directionByKey[event.key];
+    if (!direction) {
+      return;
+    }
+    event.preventDefault();
+    this.activeMoveKeys.delete(event.key);
+    this.callbacks.release(direction);
+  }
+
   private setDirection(direction: Direction | null): void {
     if (direction === null) {
+      if (this.currentDirection === null) {
+        return;
+      }
+      const releasedDirection = this.currentDirection;
       this.currentDirection = null;
       this.clearRepeat();
+      this.callbacks.release(releasedDirection);
       return;
     }
     if (direction === this.currentDirection) {
       return;
+    }
+    if (this.currentDirection !== null) {
+      this.callbacks.release(this.currentDirection);
     }
     this.currentDirection = direction;
     this.callbacks.move(direction);

@@ -86,6 +86,7 @@ type Box = {
   y: number;
   nextFallAtMs: number | null; // 停止中はnull。落下中はゲーム時計上の期限
   motion: BoxMotion | null;    // プッシュ中の表示移動。グリッド座標は完了まで元マス
+  unbreakable: boolean;        // 初期配置専用。パンチではHPを減らさない
 };
 
 type Player = { x: number; y: number; facing: Direction };
@@ -106,11 +107,18 @@ type GameState = {
   nextBoxId: number;
   endReason: EndReason | null;
   clearAnimation: ClearAnimation | null;
+  movementLocks: Direction[]; // 箱アクション後、releaseまで通常移動へ引き継がない方向
 };
 
 type GameInput =
   | { atMs: number; seq: number; type: 'move'; direction: Direction }
-  | { atMs: number; seq: number; type: 'punch' };
+  | { atMs: number; seq: number; type: 'punch' }
+  | { atMs: number; seq: number; type: 'release'; direction: Direction | null };
+
+type InitialBoxPattern = {
+  id: string;
+  rows: BoxColor[][];
+};
 ```
 
 残り時間は`max(0, durationMs - timeMs)`、落下中かどうかは`nextFallAtMs !== null`など、
@@ -120,13 +128,21 @@ type GameInput =
 箱の位置索引`(x,y) → BoxId`は必要時に再構築してよい。最大120セルなので複雑な最適化は不要。
 破壊・消去済み箱の予約が残っていても、そのIDが存在しなければ処理しない。
 
+`createGame`は設定の`initialBoxPatterns`からseed付き乱数で1パターンを選び、最下段2行へ
+`unbreakable: true`の箱として配置する。これらは通常色を持つがパンチでHPを減らさない。通常生成箱は
+`unbreakable: false`で作る。R-26。
+初期パターンは設定データとして分離し、各行10列・2行の編集で配置変更できるようにする。
+
 プッシュ成功時はR-20により箱だけを1マス移動し、プレイヤー座標は変更しない。
 箱が空けたマスへ進む処理は、次の移動入力として扱う。
 これにより、支え箱を押した瞬間にプレイヤーが崩落予定マスへ自動追従しない。
+プッシュに使った方向は`movementLocks`へ入れ、同じ方向の押しっぱなしリピートを通常移動として処理しない。`release`入力後の再入力だけを新しい移動意思として扱う。R-25。
 プッシュ対象はR-22により静止箱だけで、`nextFallAtMs !== null`の落下中箱は押せない。
 プッシュはR-23により250msの等速表示移動として扱い、`motion.endsAtMs`でグリッド座標を確定する。
 パンチ成功時もR-21により、箱のHP減少または箱削除だけを行い、プレイヤー座標は変更しない。
+`unbreakable`な箱へパンチした場合は、命中イベントだけを出し、HP・箱有無・プレイヤー座標を変更しない。R-26。
 破壊された箱のマスへ進む処理も、次の移動入力として扱う。
+パンチで箱を破壊した場合も向き方向を`movementLocks`へ入れ、方向キーを押したままのリピートで破壊後の空きマスへ入らないようにする。R-25。
 箱へのアクション成功後にプレイヤーを対象箱の元いたマスへ移動させる共通処理は置かない。
 
 ## 4. coreのインターフェース案
@@ -155,7 +171,7 @@ finishClearAnimation(state, config): {
 同じ時刻の境界を曖昧にしない。次の順で処理する。
 
 1. tが60,000ms以上なら時間切れを確定し、以後の処理を行わない。
-2. tの入力を処理する。同時刻内は移動系を先、パンチを後、その中では`seq`順とする。
+2. tの入力を処理する。同時刻内は`release`を先、移動系を次、パンチを後、その中では`seq`順とする。
 3. 支えを再計算し、移動中または同時刻に完了予定の箱を除いた停止中の同色連結を検出する。対象があれば`clearing`へ入り、この時刻のワールド処理を止める。
 4. tに期限が来た落下アニメーションまたはプッシュアニメーションを確定する。落下確定で圧死ならその場で終了する。
 5. 支えを更新し、着地・プッシュ完了などで生じた連結消去を検出する。対象があれば`clearing`へ入り、この時刻のワールド処理を止める。
@@ -210,6 +226,7 @@ Runtimeは壁時計で0.5秒の点滅を描画し、その間coreの`timeMs`を�
 1時刻の処理で複数の同色成分が見つかっても、除去箱IDを重複なく集約して1回だけコンボを更新する。
 パンチの`box_broken`はこの集合へ入れない。
 点滅中の箱は描画対象として残るが、ワールド時間が止まっているため衝突・入力・生成・落下は進まない。
+`unbreakable`な箱も同色3個以上の連結消去では通常箱と同じ対象として扱う。パンチ耐性は連結消去耐性ではない。R-26。
 
 ## 8. 時計と描画
 
@@ -230,6 +247,7 @@ Runtimeが単調増加の外部時刻からゲームの進行時間を作り、c
 落下のグリッド座標は落下期限時刻に次マスへ確定する。プッシュのグリッド座標も`motion.endsAtMs`で確定する。
 補間アニメーション中の表示座標は衝突・連結消去の正本にしない。
 消去点滅はRenderer側のopacityやオーバーレイで実装し、箱画像や仮ラベルに依存させない。R-24。
+`unbreakable`な箱の×マークもRenderer側の黒系オーバーレイで描画し、箱画像には焼き込まない。R-26。
 物理エンジンを追加して実装を肥大化させない。
 
 ## 9. タッチ入力
@@ -248,6 +266,7 @@ Pointer EventsでpointerIdごとに状態を持つ案とする。
 十字キー：押下時0ms、継続250ms、350ms、450ms…のリピート。
 指が別方向へ移れば新方向の即時1回を発行し、リピート待ちをリセットする初期案とする。
 中央の無入力領域や十字キー外ではリピート停止。終了・ポーズ・pointercancelで予約を消す。
+プッシュ成功またはパンチ破壊後は、その方向のリピートをcore側の`movementLocks`で無効化し、pointerup／keyup由来の`release`を受けるまで通常移動へ引き継がない。R-25。
 同時に複数方向がある場合は最新の有効方向を採用する。斜め移動を作らない。
 
 操作領域のみに`touch-action: none`等を適用してスクロール誤操作を抑える。

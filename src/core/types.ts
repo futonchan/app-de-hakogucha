@@ -21,6 +21,7 @@ export type Box = {
   y: number;
   nextFallAtMs: number | null;
   motion: BoxMotion | null;
+  unbreakable: boolean;
 };
 
 export type ClearAnimation = {
@@ -37,7 +38,8 @@ export type Player = {
 
 export type GameInput =
   | { atMs: number; seq: number; type: 'move'; direction: Direction }
-  | { atMs: number; seq: number; type: 'punch' };
+  | { atMs: number; seq: number; type: 'punch' }
+  | { atMs: number; seq: number; type: 'release'; direction: Direction | null };
 
 export type GamePhase = 'playing' | 'clearing' | 'ended';
 
@@ -56,6 +58,7 @@ export type GameState = {
   endReason: EndReason | null;
   processedInputKeys: string[];
   clearAnimation: ClearAnimation | null;
+  movementLocks: Direction[];
 };
 
 export type GameConfig = {
@@ -75,6 +78,12 @@ export type GameConfig = {
   boxHp: Record<BoxColor, number>;
   boxColors: BoxColor[];
   playerStart: Player;
+  initialBoxPatterns: InitialBoxPattern[];
+};
+
+export type InitialBoxPattern = {
+  id: string;
+  rows: BoxColor[][];
 };
 
 export type GameEvent =

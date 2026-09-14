@@ -1,28 +1,32 @@
 import { assertValidState, buildOccupancy, cellKey, recalculateSupport } from './board';
 import { nextRandom, normalizeSeed } from './random';
-import { moveOrPush, punch } from './actions';
+import { moveOrPush, punch, releaseMovementLock } from './actions';
 import { applyGravity } from './gravity';
 import { startClearAnimation } from './matches';
 import { applyClearScore, expireComboIfNeeded } from './scoring';
 import { defaultGameConfig } from '../config';
-import type { Box, BoxColor, GameConfig, GameEvent, GameInput, GameState } from './types';
+import type { Box, BoxColor, GameConfig, GameEvent, GameInput, GameState, InitialBoxPattern } from './types';
 
 export function createGame(seed = 1, config: GameConfig = defaultGameConfig): GameState {
+  const normalizedSeed = normalizeSeed(seed);
+  const patternDraw = nextRandom(normalizedSeed);
+  const initialBoxes = createInitialBoxes(config, chooseInitialPattern(config.initialBoxPatterns, patternDraw.value));
   return {
     phase: 'playing',
     timeMs: 0,
-    boxes: [],
+    boxes: initialBoxes,
     player: { ...config.playerStart },
     score: 0,
     combo: 0,
     maxCombo: 0,
     lastClearAtMs: null,
     nextSpawnAtMs: config.firstSpawnAtMs,
-    rngState: normalizeSeed(seed),
-    nextBoxId: 1,
+    rngState: patternDraw.state,
+    nextBoxId: initialBoxes.length + 1,
     endReason: null,
     processedInputKeys: [],
-    clearAnimation: null
+    clearAnimation: null,
+    movementLocks: []
   };
 }
 
@@ -32,12 +36,42 @@ export function cloneState(state: GameState): GameState {
     player: { ...state.player },
     boxes: state.boxes.map((box) => ({ ...box, motion: box.motion ? { ...box.motion } : null })),
     processedInputKeys: [...state.processedInputKeys],
-    clearAnimation: state.clearAnimation ? { ...state.clearAnimation, boxIds: [...state.clearAnimation.boxIds] } : null
+    clearAnimation: state.clearAnimation ? { ...state.clearAnimation, boxIds: [...state.clearAnimation.boxIds] } : null,
+    movementLocks: [...state.movementLocks]
   };
 }
 
 export function createBox(id: number, color: BoxColor, x: number, y: number, hp?: number, nextFallAtMs: number | null = null): Box {
-  return { id, color, x, y, hp: hp ?? defaultGameConfig.boxHp[color], nextFallAtMs, motion: null };
+  return { id, color, x, y, hp: hp ?? defaultGameConfig.boxHp[color], nextFallAtMs, motion: null, unbreakable: false };
+}
+
+export function createInitialBoxes(config: GameConfig, pattern: InitialBoxPattern): Box[] {
+  if (pattern.rows.length !== 2 || pattern.rows.some((row) => row.length !== config.columns)) {
+    throw new Error(`Initial box pattern ${pattern.id} must contain exactly two ${config.columns}-cell rows`);
+  }
+  const firstInitialRow = config.rows - pattern.rows.length;
+  if (firstInitialRow < 0) {
+    throw new Error(`Initial box pattern ${pattern.id} does not fit on the board`);
+  }
+  return pattern.rows.flatMap((row, rowIndex) =>
+    row.map((color, x) => ({
+      id: rowIndex * config.columns + x + 1,
+      color,
+      hp: config.boxHp[color],
+      x,
+      y: firstInitialRow + rowIndex,
+      nextFallAtMs: null,
+      motion: null,
+      unbreakable: true
+    }))
+  );
+}
+
+export function chooseInitialPattern(patterns: InitialBoxPattern[], randomValue: number): InitialBoxPattern {
+  if (patterns.length === 0) {
+    throw new Error('At least one initial box pattern is required');
+  }
+  return patterns[Math.min(patterns.length - 1, Math.floor(randomValue * patterns.length))]!;
 }
 
 export function chooseSpawnColumn(openColumns: number[], randomValue: number): number {
@@ -183,7 +217,7 @@ function processInputsAt(
     .filter((input) => input.atMs === nowMs && !state.processedInputKeys.includes(inputKey(input)))
     .sort((first, second) => {
       if (first.type !== second.type) {
-        return first.type === 'move' ? -1 : 1;
+        return inputOrder(first.type) - inputOrder(second.type);
       }
       return first.seq - second.seq;
     });
@@ -192,10 +226,22 @@ function processInputsAt(
     state.processedInputKeys.push(inputKey(input));
     if (input.type === 'move') {
       moveOrPush(state, config, nowMs, input.direction);
-    } else {
+    } else if (input.type === 'punch') {
       punch(state, config, nowMs, events);
+    } else {
+      releaseMovementLock(state, input.direction);
     }
   }
+}
+
+function inputOrder(type: GameInput['type']): number {
+  if (type === 'release') {
+    return 0;
+  }
+  if (type === 'move') {
+    return 1;
+  }
+  return 2;
 }
 
 function spawnBox(state: GameState, config: GameConfig, events: GameEvent[], nowMs: number): 'crushed' | 'no_spawn_column' | null {
@@ -223,7 +269,8 @@ function spawnBox(state: GameState, config: GameConfig, events: GameEvent[], now
     x,
     y: 0,
     nextFallAtMs: null,
-    motion: null
+    motion: null,
+    unbreakable: false
   };
   state.nextBoxId += 1;
   state.nextSpawnAtMs += config.spawnIntervalMs;

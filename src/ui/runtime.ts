@@ -32,6 +32,7 @@ export class GameRuntime {
       {
         move: (direction) => this.enqueueMove(direction),
         punch: () => this.enqueuePunch(),
+        release: (direction) => this.enqueueRelease(direction),
         pause: () => this.pause('手動ポーズ')
       }
     );
@@ -87,6 +88,9 @@ export class GameRuntime {
     if (this.phase !== 'playing' && this.phase !== 'countdown') {
       return;
     }
+    if (this.phase === 'playing') {
+      this.enqueueRelease(null);
+    }
     this.inputController.releaseAll();
     if (this.phase === 'playing') {
       this.gameBaseMs = this.state.timeMs;
@@ -132,6 +136,14 @@ export class GameRuntime {
     this.seq += 1;
   }
 
+  private enqueueRelease(direction: Direction | null): void {
+    if (this.phase !== 'playing') {
+      return;
+    }
+    this.pendingInputs.push({ atMs: this.state.timeMs, seq: this.seq, type: 'release', direction });
+    this.seq += 1;
+  }
+
   private tick(now: number): void {
     if (this.phase === 'countdown') {
       const elapsed = now - this.countdownStartedAtMs;
@@ -157,6 +169,7 @@ export class GameRuntime {
         this.pendingInputs = this.pendingInputs.filter((input) => !this.state.processedInputKeys.includes(`${input.atMs}:${input.seq}:${input.type}`));
         if (this.state.phase === 'clearing') {
           this.clearEffectStartedAtMs = now;
+          this.enqueueRelease(null);
           this.inputController.releaseAll();
         }
       }

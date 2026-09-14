@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGameConfig } from '../../src/config';
 import { getBoxDisplayPosition } from '../../src/core/display';
-import { advanceTo, chooseColor, chooseSpawnColumn, createBox, createGame, finishClearAnimation } from '../../src/core/engine';
+import { advanceTo, chooseColor, chooseInitialPattern, chooseSpawnColumn, createBox, createGame, createInitialBoxes, finishClearAnimation } from '../../src/core/engine';
 import { findMatchIds } from '../../src/core/matches';
 import { applyClearScore, expireComboIfNeeded } from '../../src/core/scoring';
 import type { Box, GameInput, GameState, Player } from '../../src/core/types';
 
-function stateWith(boxes: Box[], player: Player = { x: 4, y: 11, facing: 'up' }): GameState {
+function stateWith(boxes: Box[], player: Player = defaultGameConfig.playerStart): GameState {
   const state = createGame(123, defaultGameConfig);
   state.boxes = boxes.map((box) => ({ ...box }));
   state.nextBoxId = Math.max(1, ...boxes.map((box) => box.id + 1));
@@ -14,17 +14,25 @@ function stateWith(boxes: Box[], player: Player = { x: 4, y: 11, facing: 'up' })
   return state;
 }
 
+function createUnbreakableBox(id: number, color: Box['color'], x: number, y: number, hp?: number, nextFallAtMs: number | null = null): Box {
+  return { ...createBox(id, color, x, y, hp, nextFallAtMs), unbreakable: true };
+}
+
 function pos(state: GameState): string[] {
   return state.boxes.map((box) => `${box.id}:${box.color}:${box.hp}:${box.x},${box.y}:${box.nextFallAtMs ?? 's'}`).sort();
 }
 
 describe('board, movement and push acceptance', () => {
-  it('T-M01 creates a 10x12 empty game with the provisional player start', () => {
+  it('T-M01 creates a 10x12 game with a safe unbreakable bottom layout', () => {
     const state = createGame(1, defaultGameConfig);
     expect(defaultGameConfig.columns).toBe(10);
     expect(defaultGameConfig.rows).toBe(12);
-    expect(state.boxes).toHaveLength(0);
-    expect(state.player).toEqual({ x: 4, y: 11, facing: 'up' });
+    expect(defaultGameConfig.initialBoxPatterns).toHaveLength(10);
+    expect(state.boxes).toHaveLength(20);
+    expect(state.boxes.every((box) => box.unbreakable)).toBe(true);
+    expect(state.boxes.every((box) => box.y === 10 || box.y === 11)).toBe(true);
+    expect(state.player).toEqual({ x: 4, y: 9, facing: 'up' });
+    expect(findMatchIds(state, defaultGameConfig).size).toBe(0);
     expect(state.score).toBe(0);
     expect(state.combo).toBe(0);
   });
@@ -32,12 +40,40 @@ describe('board, movement and push acceptance', () => {
   it('T-M02/T-M03 moves one orthogonal cell and only turns at walls', () => {
     let state = createGame(1, defaultGameConfig);
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'up' }]).state;
-    expect(state.player).toEqual({ x: 4, y: 10, facing: 'up' });
+    expect(state.player).toEqual({ x: 4, y: 8, facing: 'up' });
     state = advanceTo(state, 2, [{ atMs: 2, seq: 2, type: 'move', direction: 'left' }]).state;
-    expect(state.player).toEqual({ x: 3, y: 10, facing: 'left' });
+    expect(state.player).toEqual({ x: 3, y: 8, facing: 'left' });
     state.player = { x: 0, y: 0, facing: 'left' };
     state = advanceTo(state, 3, [{ atMs: 3, seq: 3, type: 'move', direction: 'up' }]).state;
     expect(state.player).toEqual({ x: 0, y: 0, facing: 'up' });
+  });
+
+  it('keeps all configured initial patterns in the bottom two rows without starting matches', () => {
+    for (const pattern of defaultGameConfig.initialBoxPatterns) {
+      const boxes = createInitialBoxes(defaultGameConfig, pattern);
+      const state = stateWith(boxes, defaultGameConfig.playerStart);
+      expect(boxes).toHaveLength(20);
+      expect(boxes.every((box) => box.unbreakable && (box.y === 10 || box.y === 11))).toBe(true);
+      expect(findMatchIds(state, defaultGameConfig).size).toBe(0);
+    }
+  });
+
+  it('randomly selects one of the ten configured initial patterns', () => {
+    expect(chooseInitialPattern(defaultGameConfig.initialBoxPatterns, 0).id).toBe('pattern-01');
+    expect(chooseInitialPattern(defaultGameConfig.initialBoxPatterns, 0.1).id).toBe('pattern-02');
+    expect(chooseInitialPattern(defaultGameConfig.initialBoxPatterns, 0.5).id).toBe('pattern-06');
+    expect(chooseInitialPattern(defaultGameConfig.initialBoxPatterns, 0.999).id).toBe('pattern-10');
+  });
+
+  it('pushes unbreakable boxes with the same rules as normal stationary boxes', () => {
+    let state = stateWith([createUnbreakableBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
+
+    state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
+    expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
+    expect(state.boxes[0]).toMatchObject({ x: 2, y: 11, unbreakable: true, motion: { toX: 3, toY: 11, endsAtMs: 251 } });
+
+    state = advanceTo(state, 251).state;
+    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, unbreakable: true, motion: null });
   });
 
   it('T-M04 keeps the player floating without gravity', () => {
@@ -141,6 +177,38 @@ describe('board, movement and push acceptance', () => {
     expect(fallingBox).toMatchObject({ x: 4, y: 4, nextFallAtMs: 250 });
     expect(getBoxDisplayPosition(fallingBox, 125, defaultGameConfig)).toEqual({ x: 4, y: 4.5 });
   });
+
+  it('keeps the player in place after push while the direction is held through animation completion', () => {
+    let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
+    state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
+    expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
+    expect(state.movementLocks).toEqual(['right']);
+
+    state = advanceTo(state, 600, [
+      { atMs: 101, seq: 2, type: 'move', direction: 'right' },
+      { atMs: 201, seq: 3, type: 'move', direction: 'right' },
+      { atMs: 301, seq: 4, type: 'move', direction: 'right' },
+      { atMs: 401, seq: 5, type: 'move', direction: 'right' },
+      { atMs: 501, seq: 6, type: 'move', direction: 'right' }
+    ]).state;
+
+    expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
+    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, motion: null });
+  });
+
+  it('allows entering the vacated pushed cell only after release and re-input', () => {
+    let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
+    state = advanceTo(state, 602, [
+      { atMs: 1, seq: 1, type: 'move', direction: 'right' },
+      { atMs: 301, seq: 2, type: 'move', direction: 'right' },
+      { atMs: 601, seq: 3, type: 'release', direction: 'right' },
+      { atMs: 602, seq: 4, type: 'move', direction: 'right' }
+    ]).state;
+
+    expect(state.player).toEqual({ x: 2, y: 11, facing: 'right' });
+    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, motion: null });
+    expect(state.movementLocks).toEqual([]);
+  });
 });
 
 describe('punch acceptance', () => {
@@ -177,7 +245,10 @@ describe('punch acceptance', () => {
     expect(state.boxes).toHaveLength(0);
     expect(state.player).toEqual({ x: 4, y: 11, facing: 'up' });
 
-    state = advanceTo(state, 2, [{ atMs: 2, seq: 2, type: 'move', direction: 'up' }]).state;
+    state = advanceTo(state, 3, [
+      { atMs: 2, seq: 2, type: 'release', direction: 'up' },
+      { atMs: 3, seq: 3, type: 'move', direction: 'up' }
+    ]).state;
     expect(state.player).toEqual({ x: 4, y: 10, facing: 'up' });
   });
 
@@ -213,16 +284,73 @@ describe('punch acceptance', () => {
     expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 11, nextFallAtMs: null });
     expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
   });
+
+  it('keeps the player in place after punching a box while the direction is held', () => {
+    let state = stateWith(
+      [createBox(1, 'red', 2, 11), createBox(2, 'blue', 3, 11)],
+      { x: 1, y: 11, facing: 'right' }
+    );
+
+    state = advanceTo(state, 500, [
+      { atMs: 1, seq: 1, type: 'move', direction: 'right' },
+      { atMs: 2, seq: 2, type: 'punch' },
+      { atMs: 102, seq: 3, type: 'move', direction: 'right' },
+      { atMs: 202, seq: 4, type: 'move', direction: 'right' },
+      { atMs: 302, seq: 5, type: 'move', direction: 'right' }
+    ]).state;
+
+    expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
+    expect(state.boxes.map((box) => box.id)).toEqual([2]);
+    expect(state.movementLocks).toEqual(['right']);
+  });
+
+  it('allows entering a punched-out cell only after release and re-input', () => {
+    let state = stateWith(
+      [createBox(1, 'red', 2, 11), createBox(2, 'blue', 3, 11)],
+      { x: 1, y: 11, facing: 'right' }
+    );
+
+    state = advanceTo(state, 500, [
+      { atMs: 1, seq: 1, type: 'move', direction: 'right' },
+      { atMs: 2, seq: 2, type: 'punch' },
+      { atMs: 102, seq: 3, type: 'move', direction: 'right' },
+      { atMs: 302, seq: 4, type: 'release', direction: 'right' },
+      { atMs: 303, seq: 5, type: 'move', direction: 'right' }
+    ]).state;
+
+    expect(state.player).toEqual({ x: 2, y: 11, facing: 'right' });
+    expect(state.boxes.map((box) => box.id)).toEqual([2]);
+    expect(state.movementLocks).toEqual([]);
+  });
+
+  it('does not damage or destroy unbreakable boxes when punched', () => {
+    let state = stateWith([createUnbreakableBox(1, 'red', 4, 10)], { x: 4, y: 11, facing: 'up' });
+    let result = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'punch' }]);
+    expect(result.state.boxes).toHaveLength(1);
+    expect(result.state.boxes[0]).toMatchObject({ id: 1, hp: 1, unbreakable: true, x: 4, y: 10 });
+    expect(result.state.player).toEqual({ x: 4, y: 11, facing: 'up' });
+    expect(result.events).toContainEqual({ type: 'box_punched', atMs: 1, boxId: 1, hp: 1 });
+
+    state = stateWith([createUnbreakableBox(2, 'gray', 4, 10, 3)], { x: 4, y: 11, facing: 'up' });
+    for (let hit = 1; hit <= 3; hit += 1) {
+      result = advanceTo(state, hit, [{ atMs: hit, seq: hit, type: 'punch' }]);
+      state = result.state;
+      expect(state.boxes[0]).toMatchObject({ id: 2, hp: 3, unbreakable: true, x: 4, y: 10 });
+      expect(state.player).toEqual({ x: 4, y: 11, facing: 'up' });
+    }
+  });
 });
 
 describe('spawn and random acceptance', () => {
   it('T-S01/T-S02 spawns at 1000ms intervals without duplicates', () => {
     let state = createGame(4, defaultGameConfig);
-    expect(advanceTo(state, 999).state.boxes).toHaveLength(0);
+    expect(advanceTo(state, 999).state.boxes).toHaveLength(20);
     state = advanceTo(state, 1_000).state;
-    expect(state.boxes).toHaveLength(1);
+    expect(state.boxes).toHaveLength(21);
+    expect(state.boxes.find((box) => box.id === 21)).toMatchObject({ y: 0, unbreakable: false });
     state = advanceTo(state, 3_000).state;
-    expect(state.boxes).toHaveLength(3);
+    expect(state.boxes).toHaveLength(23);
+    expect(state.boxes.filter((box) => !box.unbreakable)).toHaveLength(3);
   });
 
   it('T-S03-T-S07 maps open columns and colors from random intervals', () => {
@@ -267,15 +395,24 @@ describe('gravity and crush acceptance', () => {
   it('T-F01-T-F04 falls every 250ms and respects floor and boxes', () => {
     let state = createGame(2, defaultGameConfig);
     state = advanceTo(state, 1_000).state;
-    const spawnedX = state.boxes[0].x;
-    expect(advanceTo(state, 1_249).state.boxes[0]).toMatchObject({ x: spawnedX, y: 0 });
+    const spawnedBox = state.boxes.find((box) => box.id === 21)!;
+    const spawnedX = spawnedBox.x;
+    expect(advanceTo(state, 1_249).state.boxes.find((box) => box.id === 21)).toMatchObject({ x: spawnedX, y: 0 });
     state = advanceTo(state, 1_250).state;
-    expect(state.boxes[0]).toMatchObject({ x: spawnedX, y: 1 });
+    expect(state.boxes.find((box) => box.id === 21)).toMatchObject({ x: spawnedX, y: 1 });
 
     state = stateWith([createBox(1, 'red', 0, 0, 1, 250)]);
     expect(advanceTo(state, 750).state.boxes[0].y).toBe(3);
     state = stateWith([createBox(1, 'red', 0, 11), createBox(2, 'blue', 1, 10), createBox(3, 'green', 1, 11)]);
     expect(advanceTo(state, 500).state.boxes.map((box) => box.y).sort((a, b) => a - b)).toEqual([10, 11, 11]);
+  });
+
+  it('makes unsupported unbreakable boxes fall like normal boxes', () => {
+    const state = stateWith([createUnbreakableBox(1, 'blue', 2, 5, 1, 250)]);
+    const result = advanceTo(state, 250);
+
+    expect(result.state.boxes[0]).toMatchObject({ id: 1, x: 2, y: 6, unbreakable: true, nextFallAtMs: 500 });
+    expect(result.events).toContainEqual({ type: 'boxes_fell', atMs: 250, boxIds: [1] });
   });
 
   it('T-F05/T-F06 makes unsupported stacks fall from support-loss time independent of array order', () => {
@@ -311,6 +448,23 @@ describe('matches, combo and score acceptance', () => {
     expect(findMatchIds(stateWith([createBox(1, 'red', 1, 11), createBox(2, 'red', 2, 11), createBox(3, 'red', 2, 10)]), defaultGameConfig).size).toBe(3);
     expect(findMatchIds(stateWith([createBox(1, 'red', 1, 11), createBox(2, 'red', 2, 10), createBox(3, 'red', 3, 9)]), defaultGameConfig).size).toBe(0);
     expect(findMatchIds(stateWith([createBox(1, 'gray', 1, 11, 3), createBox(2, 'gray', 2, 11, 2), createBox(3, 'gray', 3, 11, 1)]), defaultGameConfig).size).toBe(3);
+  });
+
+  it('clears unbreakable boxes through same-color matches', () => {
+    const state = stateWith([
+      createUnbreakableBox(1, 'green', 1, 11),
+      createUnbreakableBox(2, 'green', 2, 11),
+      createUnbreakableBox(3, 'green', 3, 11)
+    ]);
+    const result = advanceTo(state, 1);
+
+    expect(result.state.phase).toBe('clearing');
+    expect(result.state.boxes.every((box) => box.unbreakable)).toBe(true);
+    expect(result.events).toContainEqual({ type: 'boxes_clear_started', atMs: 1, boxIds: [1, 2, 3], durationMs: 500 });
+
+    const finished = finishClearAnimation(result.state);
+    expect(finished.state.boxes).toHaveLength(0);
+    expect(finished.state.score).toBe(300);
   });
 
   it('T-C09 keeps falling boxes out of match detection', () => {
@@ -502,7 +656,7 @@ describe('time boundary and repeatability acceptance', () => {
     const result = advanceTo(state, 60_000);
     expect(result.state.timeMs).toBe(60_000);
     expect(result.state.endReason).toBe('time_up');
-    expect(result.state.boxes).toHaveLength(0);
+    expect(result.state.boxes).toHaveLength(20);
   });
 
   it('T-T09 produces the same result when advanced in chunks', () => {
