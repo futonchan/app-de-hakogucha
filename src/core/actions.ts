@@ -1,4 +1,4 @@
-import { buildOccupancy, cellKey, directionDeltas, isInside, recalculateSupport } from './board';
+import { buildOccupancy, cellKey, directionDeltas, hasReservedCell, isInside, recalculateSupport } from './board';
 import type { Direction, GameConfig, GameEvent, GameState } from './types';
 
 export function moveOrPush(state: GameState, config: GameConfig, nowMs: number, direction: Direction): void {
@@ -13,23 +13,32 @@ export function moveOrPush(state: GameState, config: GameConfig, nowMs: number, 
   const occupancy = buildOccupancy(state.boxes);
   const targetBox = occupancy.get(cellKey(targetX, targetY));
   if (!targetBox) {
+    if (hasReservedCell(state.boxes, targetX, targetY)) {
+      return;
+    }
     state.player.x = targetX;
     state.player.y = targetY;
     return;
   }
-  if (targetBox.nextFallAtMs !== null) {
+  if (targetBox.nextFallAtMs !== null || targetBox.motion !== null) {
     return;
   }
 
   const pushedX = targetBox.x + delta.dx;
   const pushedY = targetBox.y + delta.dy;
-  if (!isInside(config, pushedX, pushedY) || occupancy.has(cellKey(pushedX, pushedY))) {
+  if (!isInside(config, pushedX, pushedY) || occupancy.has(cellKey(pushedX, pushedY)) || hasReservedCell(state.boxes, pushedX, pushedY)) {
     return;
   }
 
-  targetBox.x = pushedX;
-  targetBox.y = pushedY;
-  recalculateSupport(state, config, nowMs);
+  targetBox.motion = {
+    kind: 'push',
+    fromX: targetBox.x,
+    fromY: targetBox.y,
+    toX: pushedX,
+    toY: pushedY,
+    startedAtMs: nowMs,
+    endsAtMs: nowMs + config.pushStepMs
+  };
 }
 
 export function punch(state: GameState, config: GameConfig, nowMs: number, events: GameEvent[]): void {

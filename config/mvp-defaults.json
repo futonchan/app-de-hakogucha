@@ -68,6 +68,12 @@
       "stepCells": 1,
       "sameSpeedAfterSupportLoss": true
     },
+    "animation": {
+      "fallStepAnimationMs": 250,
+      "pushStepAnimationMs": 250,
+      "boxGridAndDisplayCoordinatesSeparated": true,
+      "movingBoxesExcludedFromMatchClear": true
+    },
     "matching": {
       "sameColor": true,
       "minimumConnected": 3,

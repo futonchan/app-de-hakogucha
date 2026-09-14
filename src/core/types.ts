@@ -3,6 +3,16 @@ export type BoxColor = 'red' | 'blue' | 'green' | 'gray';
 export type BoxId = number;
 export type EndReason = 'time_up' | 'crushed' | 'no_spawn_column';
 
+export type BoxMotion = {
+  kind: 'push';
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  startedAtMs: number;
+  endsAtMs: number;
+};
+
 export type Box = {
   id: BoxId;
   color: BoxColor;
@@ -10,6 +20,7 @@ export type Box = {
   x: number;
   y: number;
   nextFallAtMs: number | null;
+  motion: BoxMotion | null;
 };
 
 export type Player = {
@@ -47,6 +58,7 @@ export type GameConfig = {
   spawnIntervalMs: number;
   firstSpawnAtMs: number;
   fallStepMs: number;
+  pushStepMs: number;
   comboWindowMs: number;
   minimumConnected: number;
   pointsPerMatchedBox: number;
@@ -61,6 +73,7 @@ export type GameEvent =
   | { type: 'box_spawned'; atMs: number; box: Box }
   | { type: 'box_punched'; atMs: number; boxId: BoxId; hp: number }
   | { type: 'box_broken'; atMs: number; boxId: BoxId }
+  | { type: 'box_pushed'; atMs: number; boxId: BoxId; toX: number; toY: number }
   | { type: 'boxes_cleared'; atMs: number; count: number; combo: number; points: number }
   | { type: 'boxes_fell'; atMs: number; boxIds: BoxId[] }
   | { type: 'game_ended'; atMs: number; reason: EndReason };

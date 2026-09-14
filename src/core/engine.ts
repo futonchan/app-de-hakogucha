@@ -29,13 +29,13 @@ export function cloneState(state: GameState): GameState {
   return {
     ...state,
     player: { ...state.player },
-    boxes: state.boxes.map((box) => ({ ...box })),
+    boxes: state.boxes.map((box) => ({ ...box, motion: box.motion ? { ...box.motion } : null })),
     processedInputKeys: [...state.processedInputKeys]
   };
 }
 
 export function createBox(id: number, color: BoxColor, x: number, y: number, hp?: number, nextFallAtMs: number | null = null): Box {
-  return { id, color, x, y, hp: hp ?? defaultGameConfig.boxHp[color], nextFallAtMs };
+  return { id, color, x, y, hp: hp ?? defaultGameConfig.boxHp[color], nextFallAtMs, motion: null };
 }
 
 export function chooseSpawnColumn(openColumns: number[], randomValue: number): number {
@@ -97,6 +97,9 @@ function findNextTime(state: GameState, config: GameConfig, inputs: GameInput[],
     if (box.nextFallAtMs !== null && box.nextFallAtMs >= state.timeMs && box.nextFallAtMs <= targetMs) {
       times.push(box.nextFallAtMs);
     }
+    if (box.motion !== null && box.motion.endsAtMs >= state.timeMs && box.motion.endsAtMs <= targetMs) {
+      times.push(box.motion.endsAtMs);
+    }
   }
   for (const input of inputs) {
     if (!state.processedInputKeys.includes(inputKey(input)) && input.atMs >= state.timeMs && input.atMs <= targetMs) {
@@ -114,6 +117,9 @@ function hasDueWorkAtOrBefore(state: GameState, inputs: GameInput[], targetMs: n
     return true;
   }
   if (state.boxes.some((box) => box.nextFallAtMs !== null && box.nextFallAtMs <= targetMs)) {
+    return true;
+  }
+  if (state.boxes.some((box) => box.motion !== null && box.motion.endsAtMs <= targetMs)) {
     return true;
   }
   return inputs.some((input) => !state.processedInputKeys.includes(inputKey(input)) && input.atMs <= targetMs);
@@ -212,7 +218,8 @@ function spawnBox(state: GameState, config: GameConfig, events: GameEvent[], now
     hp: config.boxHp[color],
     x,
     y: 0,
-    nextFallAtMs: null
+    nextFallAtMs: null,
+    motion: null
   };
   state.nextBoxId += 1;
   state.nextSpawnAtMs += config.spawnIntervalMs;

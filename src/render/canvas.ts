@@ -1,4 +1,5 @@
 import { directionDeltas } from '../core/board';
+import { getBoxDisplayPosition } from '../core/display';
 import type { Box, GameConfig, GameState } from '../core/types';
 
 const colors: Record<Box['color'], string> = {
@@ -61,27 +62,28 @@ export class CanvasRenderer {
     }
 
     for (const box of state.boxes) {
-      this.drawBox(box, cell);
+      this.drawBox(box, cell, state.timeMs);
     }
     this.drawPunchTarget(state, cell);
     this.drawPlayer(state, cell);
   }
 
-  private drawBox(box: Box, cell: number): void {
+  private drawBox(box: Box, cell: number, nowMs: number): void {
+    const display = getBoxDisplayPosition(box, nowMs, this.config);
     const pad = Math.max(2, cell * 0.08);
-    const x = box.x * cell + pad;
-    const y = box.y * cell + pad;
+    const x = display.x * cell + pad;
+    const y = display.y * cell + pad;
     const size = cell - pad * 2;
     this.ctx.fillStyle = colors[box.color];
     this.ctx.fillRect(x, y, size, size);
-    this.ctx.strokeStyle = box.nextFallAtMs === null ? '#ffffff' : '#ffdd57';
+    this.ctx.strokeStyle = box.nextFallAtMs === null && box.motion === null ? '#ffffff' : '#ffdd57';
     this.ctx.lineWidth = 2;
     this.ctx.strokeRect(x, y, size, size);
     this.ctx.fillStyle = '#ffffff';
     this.ctx.font = `bold ${Math.max(12, cell * 0.38)}px system-ui, sans-serif`;
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(box.color === 'gray' ? String(box.hp) : labels[box.color], box.x * cell + cell / 2, box.y * cell + cell / 2);
+    this.ctx.fillText(box.color === 'gray' ? String(box.hp) : labels[box.color], display.x * cell + cell / 2, display.y * cell + cell / 2);
   }
 
   private drawPlayer(state: GameState, cell: number): void {

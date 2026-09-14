@@ -2,11 +2,20 @@ import { buildOccupancy, cellKey, recalculateSupport } from './board';
 import type { BoxId, GameConfig, GameState } from './types';
 
 export function applyGravity(state: GameState, config: GameConfig, nowMs: number): { movedIds: BoxId[]; crushed: boolean } {
+  const pushedBoxes = state.boxes.filter((box) => box.motion !== null && box.motion.endsAtMs <= nowMs);
+  const pushedIds = new Set<BoxId>();
+  for (const box of pushedBoxes) {
+    pushedIds.add(box.id);
+    box.x = box.motion!.toX;
+    box.y = box.motion!.toY;
+    box.motion = null;
+  }
+
   const dueBoxes = state.boxes
-    .filter((box) => box.nextFallAtMs !== null && box.nextFallAtMs <= nowMs)
+    .filter((box) => box.motion === null && box.nextFallAtMs !== null && box.nextFallAtMs <= nowMs)
     .sort((first, second) => second.y - first.y);
   const dueIds = new Set(dueBoxes.map((box) => box.id));
-  if (dueBoxes.length === 0) {
+  if (dueBoxes.length === 0 && pushedIds.size === 0) {
     return { movedIds: [], crushed: false };
   }
 
@@ -26,7 +35,7 @@ export function applyGravity(state: GameState, config: GameConfig, nowMs: number
     canMove.set(box.id, dueIds.has(below.id) && canMove.get(below.id) === true);
   }
 
-  const movedIds: BoxId[] = [];
+  const movedIds: BoxId[] = [...pushedIds];
   let crushed = false;
   for (const box of dueBoxes) {
     if (!canMove.get(box.id)) {

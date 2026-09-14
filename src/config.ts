@@ -7,6 +7,7 @@ export const defaultGameConfig: GameConfig = {
   spawnIntervalMs: 1_000,
   firstSpawnAtMs: 1_000,
   fallStepMs: 250,
+  pushStepMs: 250,
   comboWindowMs: 2_000,
   minimumConnected: 3,
   pointsPerMatchedBox: 100,

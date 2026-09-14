@@ -23,6 +23,21 @@ export function buildOccupancy(boxes: Box[]): Map<string, Box> {
   return occupancy;
 }
 
+export function hasReservedCell(boxes: Box[], x: number, y: number): boolean {
+  return boxes.some((box) => box.motion !== null && box.motion.toX === x && box.motion.toY === y);
+}
+
+export function isBoxMovingOrDue(box: Box, config: GameConfig, nowMs: number): boolean {
+  if (box.motion !== null) {
+    return box.motion.startedAtMs <= nowMs && nowMs <= box.motion.endsAtMs;
+  }
+  if (box.nextFallAtMs === null) {
+    return false;
+  }
+  const startedAtMs = box.nextFallAtMs - config.fallStepMs;
+  return startedAtMs <= nowMs && nowMs <= box.nextFallAtMs;
+}
+
 export function recalculateSupport(
   state: GameState,
   config: GameConfig,
@@ -46,6 +61,9 @@ export function recalculateSupport(
   }
 
   for (const box of state.boxes) {
+    if (box.motion !== null) {
+      continue;
+    }
     if (supportedIds.has(box.id)) {
       box.nextFallAtMs = null;
     } else if (rescheduleDueIds.has(box.id) || box.nextFallAtMs === null) {
@@ -74,6 +92,9 @@ export function assertValidState(state: GameState, config: GameConfig): void {
     occupied.add(occupiedKey);
     if ((box.color === 'gray' && (box.hp < 1 || box.hp > 3)) || (box.color !== 'gray' && box.hp !== 1)) {
       throw new Error(`Invalid HP for ${box.color} box ${box.id}`);
+    }
+    if (box.motion !== null && !isInside(config, box.motion.toX, box.motion.toY)) {
+      throw new Error(`Box ${box.id} motion target is outside the board`);
     }
   }
   if (state.phase === 'playing') {

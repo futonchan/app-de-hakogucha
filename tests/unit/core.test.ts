@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGameConfig } from '../../src/config';
+import { getBoxDisplayPosition } from '../../src/core/display';
 import { advanceTo, chooseColor, chooseSpawnColumn, createBox, createGame } from '../../src/core/engine';
 import { findMatchIds } from '../../src/core/matches';
 import { applyClearScore, expireComboIfNeeded } from '../../src/core/scoring';
@@ -49,7 +50,9 @@ describe('board, movement and push acceptance', () => {
     let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
     expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
-    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11 });
+    expect(state.boxes[0]).toMatchObject({ x: 2, y: 11, motion: { toX: 3, toY: 11, endsAtMs: 251 } });
+    state = advanceTo(state, 251).state;
+    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, motion: null });
 
     state = stateWith([createBox(1, 'red', 2, 11), createBox(2, 'blue', 3, 11)], { x: 1, y: 11, facing: 'right' });
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
@@ -59,7 +62,9 @@ describe('board, movement and push acceptance', () => {
     state = stateWith([createBox(1, 'gray', 2, 11, 2)], { x: 1, y: 11, facing: 'right' });
     state = advanceTo(state, 10, [{ atMs: 10, seq: 1, type: 'move', direction: 'right' }]).state;
     expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
-    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, hp: 2, nextFallAtMs: null });
+    expect(state.boxes[0]).toMatchObject({ x: 2, y: 11, hp: 2, nextFallAtMs: null, motion: { toX: 3, toY: 11, endsAtMs: 260 } });
+    state = advanceTo(state, 260).state;
+    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, hp: 2, nextFallAtMs: null, motion: null });
   });
 
   it('T-M08/T-M09/T-M11 blocks push attempts against falling boxes in any direction', () => {
@@ -83,7 +88,9 @@ describe('board, movement and push acceptance', () => {
     let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
     expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
-    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, nextFallAtMs: null });
+    expect(state.boxes[0]).toMatchObject({ x: 2, y: 11, nextFallAtMs: null, motion: { toX: 3, toY: 11, endsAtMs: 251 } });
+    state = advanceTo(state, 251).state;
+    expect(state.boxes[0]).toMatchObject({ x: 3, y: 11, nextFallAtMs: null, motion: null });
 
     state = stateWith(
       [createBox(1, 'blue', 2, 10), createBox(2, 'gray', 2, 11)],
@@ -91,8 +98,10 @@ describe('board, movement and push acceptance', () => {
     );
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
     expect(state.player).toEqual({ x: 1, y: 10, facing: 'right' });
-    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 3, y: 10, nextFallAtMs: 251 });
+    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 10, nextFallAtMs: null, motion: { toX: 3, toY: 10, endsAtMs: 251 } });
     expect(state.boxes.find((box) => box.id === 2)).toMatchObject({ x: 2, y: 11, nextFallAtMs: null });
+    state = advanceTo(state, 251).state;
+    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 3, y: 10, nextFallAtMs: 501, motion: null });
 
     state = stateWith([createBox(1, 'red', 2, 11), createBox(2, 'blue', 3, 11)], { x: 1, y: 11, facing: 'right' });
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
@@ -108,13 +117,29 @@ describe('board, movement and push acceptance', () => {
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
 
     expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
-    expect(state.boxes.find((box) => box.id === 2)).toMatchObject({ x: 3, y: 11 });
-    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 10, nextFallAtMs: 251 });
+    expect(state.boxes.find((box) => box.id === 2)).toMatchObject({ x: 2, y: 11, motion: { toX: 3, toY: 11, endsAtMs: 251 } });
+    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 10, nextFallAtMs: null });
 
     state = advanceTo(state, 251).state;
     expect(state.endReason).toBeNull();
     expect(state.player).toEqual({ x: 1, y: 11, facing: 'right' });
+    expect(state.boxes.find((box) => box.id === 2)).toMatchObject({ x: 3, y: 11, motion: null });
+    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 10, nextFallAtMs: 501 });
+    state = advanceTo(state, 501).state;
     expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 11 });
+  });
+
+  it('animates falling and pushed boxes with separate grid and display positions', () => {
+    let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
+    state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
+    const pushedBox = state.boxes[0]!;
+    expect(pushedBox).toMatchObject({ x: 2, y: 11, motion: { fromX: 2, toX: 3, startedAtMs: 1, endsAtMs: 251 } });
+    expect(getBoxDisplayPosition(pushedBox, 126, defaultGameConfig)).toEqual({ x: 2.5, y: 11 });
+
+    state = stateWith([createBox(2, 'blue', 4, 4, 1, 250)]);
+    const fallingBox = state.boxes[0]!;
+    expect(fallingBox).toMatchObject({ x: 4, y: 4, nextFallAtMs: 250 });
+    expect(getBoxDisplayPosition(fallingBox, 125, defaultGameConfig)).toEqual({ x: 4, y: 4.5 });
   });
 });
 
@@ -307,6 +332,78 @@ describe('matches, combo and score acceptance', () => {
     expect(result.state.score).toBe(600);
     expect(result.state.combo).toBe(1);
     expect(result.events.filter((event) => event.type === 'boxes_cleared')).toHaveLength(1);
+  });
+
+  it('does not clear boxes while a push animation is still moving into a match', () => {
+    let state = stateWith(
+      [createBox(1, 'red', 1, 11), createBox(2, 'red', 3, 11), createBox(3, 'red', 4, 11)],
+      { x: 0, y: 11, facing: 'right' }
+    );
+
+    state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
+    expect(state.boxes).toHaveLength(3);
+    expect(state.score).toBe(0);
+    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 1, y: 11, motion: { toX: 2, toY: 11, endsAtMs: 251 } });
+
+    state = advanceTo(state, 250).state;
+    expect(state.boxes).toHaveLength(3);
+    expect(state.score).toBe(0);
+
+    state = advanceTo(state, 251).state;
+    expect(state.boxes).toHaveLength(0);
+    expect(state.score).toBe(300);
+  });
+
+  it('runs match detection after push animation completion and emits the clear event', () => {
+    let state = stateWith(
+      [createBox(1, 'red', 1, 11), createBox(2, 'red', 3, 11), createBox(3, 'red', 4, 11)],
+      { x: 0, y: 11, facing: 'right' }
+    );
+
+    state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
+    const result = advanceTo(state, 251);
+
+    expect(result.state.boxes).toHaveLength(0);
+    expect(result.state.score).toBe(300);
+    expect(result.events).toContainEqual({ type: 'boxes_fell', atMs: 251, boxIds: [1] });
+    expect(result.events).toContainEqual({ type: 'boxes_cleared', atMs: 251, count: 3, combo: 1, points: 300 });
+  });
+
+  it('does not clear boxes while a fall animation is still moving into a match', () => {
+    let state = stateWith([createBox(1, 'red', 1, 11), createBox(2, 'red', 2, 11), createBox(3, 'red', 3, 10, 1, 250)]);
+
+    state = advanceTo(state, 249).state;
+    expect(state.boxes).toHaveLength(3);
+    expect(state.score).toBe(0);
+    expect(state.boxes.find((box) => box.id === 3)).toMatchObject({ x: 3, y: 10, nextFallAtMs: 250 });
+
+    state = advanceTo(state, 250).state;
+    expect(state.boxes).toHaveLength(0);
+    expect(state.score).toBe(300);
+  });
+
+  it('runs match detection after fall animation completion and emits the clear event', () => {
+    const state = stateWith([createBox(1, 'red', 1, 11), createBox(2, 'red', 2, 11), createBox(3, 'red', 3, 10, 1, 250)]);
+    const result = advanceTo(state, 250);
+
+    expect(result.state.boxes).toHaveLength(0);
+    expect(result.state.score).toBe(300);
+    expect(result.events).toContainEqual({ type: 'boxes_fell', atMs: 250, boxIds: [3] });
+    expect(result.events).toContainEqual({ type: 'boxes_cleared', atMs: 250, count: 3, combo: 1, points: 300 });
+  });
+
+  it('still clears stationary matches while an unrelated box is moving', () => {
+    const state = stateWith([
+      createBox(1, 'red', 1, 11),
+      createBox(2, 'red', 2, 11),
+      createBox(3, 'red', 3, 11),
+      createBox(4, 'blue', 8, 5, 1, 250)
+    ]);
+    const result = advanceTo(state, 100);
+
+    expect(result.state.boxes.map((box) => box.id)).toEqual([4]);
+    expect(result.state.score).toBe(300);
+    expect(result.events).toContainEqual({ type: 'boxes_cleared', atMs: 100, count: 3, combo: 1, points: 300 });
   });
 
   it('T-B01-T-B10 scores combo windows inclusively and expires display only', () => {

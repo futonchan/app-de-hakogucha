@@ -1,11 +1,11 @@
-import { buildOccupancy, cellKey, directionDeltas, recalculateSupport } from './board';
+import { buildOccupancy, cellKey, directionDeltas, isBoxMovingOrDue, recalculateSupport } from './board';
 import type { Box, BoxId, GameConfig, GameState } from './types';
 
 export function findMatchIds(state: GameState, config: GameConfig): Set<BoxId> {
   const supportedIds = recalculateSupport(state, config, state.timeMs);
   const eligible = new Map<BoxId, Box>();
   for (const box of state.boxes) {
-    if (supportedIds.has(box.id)) {
+    if (supportedIds.has(box.id) && !isBoxMovingOrDue(box, config, state.timeMs)) {
       eligible.set(box.id, box);
     }
   }
