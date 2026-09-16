@@ -255,15 +255,14 @@ Runtimeが単調増加の外部時刻からゲームの進行時間を作り、c
 
 ## 9. タッチ入力
 
-Pointer EventsでpointerIdごとに状態を持つ案とする。
+D-PadとパンチはPointer EventsでpointerIdごとに状態を持つ案とする。
 `pointerdown`、`pointermove`、`pointerup`、`pointercancel`、`lostpointercapture`を扱う。
-操作領域にpointer captureを使う場合は、方向判定にイベントのtargetだけを使わず、
-指の座標から十字キー内のどの方向かを再計算する。
+D-Padは上下左右4ボタンを見た目として置くが、入力対象はD-Pad全体の1領域とし、方向判定にイベントのtargetだけを使わず、指の座標からD-Pad内のどの方向かを再計算する。
 技術資料は[参考資料W-02](../references/README.md)。
 
 十字キーの指を1本保持し、パンチ用の別の指を受け付ける。
 右手のpointerupで、左手の押下状態まで一括解除しない。
-`isPrimary`だけを受け付ける実装では右手を落としてしまうため、用途別にpointerIdを扱う。
+同じpointerIdをD-Padとパンチの両方へ割り当てず、`isPrimary`だけを受け付ける実装では右手を落としてしまうため、用途別にpointerIdを扱う。
 パンチを`pointerdown`と`click`の両方から実行して2発にしない。
 
 十字キー：押下時0ms、継続250ms、350ms、450ms…のリピート。

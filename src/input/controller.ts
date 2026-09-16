@@ -48,11 +48,11 @@ export class InputController {
 
   private onDpadDown(event: PointerEvent): void {
     event.preventDefault();
-    if (this.movePointerId !== null) {
+    if (this.movePointerId !== null || event.pointerId === this.punchPointerId) {
       return;
     }
     this.movePointerId = event.pointerId;
-    this.dpad.setPointerCapture(event.pointerId);
+    this.capturePointer(this.dpad, event.pointerId);
     this.setDirection(this.directionFromPoint(event.clientX, event.clientY));
   }
 
@@ -68,6 +68,7 @@ export class InputController {
     if (event.pointerId !== this.movePointerId) {
       return;
     }
+    event.preventDefault();
     const releasedDirection = this.currentDirection;
     this.movePointerId = null;
     this.currentDirection = null;
@@ -77,16 +78,17 @@ export class InputController {
 
   private onPunchDown(event: PointerEvent): void {
     event.preventDefault();
-    if (this.punchPointerId !== null) {
+    if (this.punchPointerId !== null || event.pointerId === this.movePointerId) {
       return;
     }
     this.punchPointerId = event.pointerId;
-    this.punchButton.setPointerCapture(event.pointerId);
+    this.capturePointer(this.punchButton, event.pointerId);
     this.callbacks.punch();
   }
 
   private onPunchUp(event: PointerEvent): void {
     if (event.pointerId === this.punchPointerId) {
+      event.preventDefault();
       this.punchPointerId = null;
     }
   }
@@ -187,6 +189,12 @@ export class InputController {
       clearTimeout(this.repeatTimer);
       clearInterval(this.repeatTimer);
       this.repeatTimer = null;
+    }
+  }
+
+  private capturePointer(element: HTMLElement, pointerId: number): void {
+    if (!element.hasPointerCapture(pointerId)) {
+      element.setPointerCapture(pointerId);
     }
   }
 

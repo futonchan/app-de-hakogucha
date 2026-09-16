@@ -253,6 +253,14 @@
       "spawnOntoPlayer": "crushed"
     },
     "P-12": {
+      "dpadInputRegion": "single_whole_dpad_pointer_area",
+      "dpadVisualButtons": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ],
+      "separatePointerIdsForDpadAndPunch": true,
       "moveInitialDelayMs": 250,
       "moveRepeatMs": 100,
       "pushExtraDelayMs": 0,
