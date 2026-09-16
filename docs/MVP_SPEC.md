@@ -234,6 +234,7 @@ D-Padは上下左右4ボタンを見た目として表示するが、入力はD-
 D-Padとパンチは別々の`pointerId`を保持し、D-Padを押しながらパンチ、パンチを押しながらD-Pad移動の両方を受け付ける。`pointerup`／`pointercancel`／`lostpointercapture`で対応する入力だけを解除する。
 D-Padの初期値：押下直後に1操作、250ms待ってから100msごとに1操作。P-12。
 パンチは`pointerdown`時に1発だけ。長押しで灰箱が自動的に3回殴られない。
+ゲーム盤面、D-Pad、パンチボタンを含む`game-root`内だけ`touch-action: none`、`user-select: none`、`-webkit-user-select: none`、`-webkit-touch-callout: none`を適用し、Safariのダブルタップズームや選択UIを抑止する。ページ全体のviewportズーム禁止は使わない。R-29。
 
 初期UI目標は方向ボタンの押下領域56 CSS px程度、最低48 CSS pxを目安とする。P-15。
 これはこのプロジェクトの仮目標であり、iPhoneの規格値の主張ではない。

@@ -47,3 +47,37 @@ test('T-I11 keeps controls visible on representative portrait sizes', async ({ p
     await expect(page.locator('#game-canvas')).toBeInViewport();
   }
 });
+
+test('T-I14 disables Safari touch gestures only inside the game root', async ({ page }) => {
+  await page.goto('/');
+
+  const gameRootStyles = await page.locator('.game-root').evaluate((element) => {
+    const styles = window.getComputedStyle(element);
+    const gameRootRule = [...document.styleSheets]
+      .flatMap((sheet) => {
+        try {
+          return [...sheet.cssRules];
+        } catch {
+          return [];
+        }
+      })
+      .find((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && rule.selectorText === '.game-root');
+    return {
+      touchAction: styles.touchAction,
+      userSelect: styles.userSelect,
+      webkitUserSelect: styles.getPropertyValue('-webkit-user-select'),
+      hasGameRootRule: gameRootRule !== undefined
+    };
+  });
+
+  expect(gameRootStyles).toEqual({
+    touchAction: 'none',
+    userSelect: 'none',
+    webkitUserSelect: 'none',
+    hasGameRootRule: true
+  });
+
+  const bodyTouchAction = await page.locator('body').evaluate((element) => window.getComputedStyle(element).touchAction);
+  expect(bodyTouchAction).not.toBe('none');
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover');
+});

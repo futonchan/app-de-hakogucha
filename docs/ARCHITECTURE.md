@@ -278,8 +278,8 @@ D-Padは上下左右4ボタンを見た目として置くが、入力対象はD-
 プッシュ成功またはパンチ破壊後は、その方向のリピートをcore側の`movementLocks`で無効化し、pointerup／keyup由来の`release`を受けるまで通常移動へ引き継がない。R-25。
 同時に複数方向がある場合は最新の有効方向を採用する。斜め移動を作らない。
 
-操作領域のみに`touch-action: none`等を適用してスクロール誤操作を抑える。
-説明文などを含むページ全体の拡大操作を、無条件に禁止しない。
+ゲーム盤面、D-Pad、パンチボタンを含む`game-root`のみに`touch-action: none`、`user-select: none`、`-webkit-user-select: none`、`-webkit-touch-callout: none`を適用し、ダブルタップズームや選択UIを抑える。
+viewport metaでページ全体のズームを禁止せず、ゲーム領域外には同指定を広げない。R-29。
 キーボードは開発補助として矢印／WASD＋Spaceを用意してよいが、スマホ操作を省かない。
 
 ## 10. 描画・レイアウト
