@@ -1,4 +1,4 @@
-import type { Box, GameConfig } from './types';
+import type { Box, GameConfig, GameState } from './types';
 
 export type DisplayPosition = {
   x: number;
@@ -24,6 +24,17 @@ export function getBoxDisplayPosition(box: Box, nowMs: number, config: GameConfi
   }
 
   return { x: box.x, y: box.y };
+}
+
+export function getPlayerDisplayPosition(state: GameState, nowMs: number): DisplayPosition {
+  if (state.playerMotion === null) {
+    return { x: state.player.x, y: state.player.y };
+  }
+  const progress = progressRatio(nowMs, state.playerMotion.startedAtMs, state.playerMotion.endsAtMs);
+  return {
+    x: interpolate(state.playerMotion.fromX, state.playerMotion.toX, progress),
+    y: interpolate(state.playerMotion.fromY, state.playerMotion.toY, progress)
+  };
 }
 
 export function getClearEffectOpacity(elapsedMs: number, durationMs: number): number {

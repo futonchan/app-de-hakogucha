@@ -16,6 +16,8 @@ export function createGame(seed = 1, config: GameConfig = defaultGameConfig): Ga
     timeMs: 0,
     boxes: initialBoxes,
     player: { ...config.playerStart },
+    playerMotion: null,
+    queuedMoveDirection: null,
     score: 0,
     combo: 0,
     maxCombo: 0,
@@ -34,6 +36,8 @@ export function cloneState(state: GameState): GameState {
   return {
     ...state,
     player: { ...state.player },
+    playerMotion: state.playerMotion ? { ...state.playerMotion } : null,
+    queuedMoveDirection: state.queuedMoveDirection,
     boxes: state.boxes.map((box) => ({ ...box, motion: box.motion ? { ...box.motion } : null })),
     processedInputKeys: [...state.processedInputKeys],
     clearAnimation: state.clearAnimation ? { ...state.clearAnimation, boxIds: [...state.clearAnimation.boxIds] } : null,
@@ -137,6 +141,9 @@ function findNextTime(state: GameState, config: GameConfig, inputs: GameInput[],
       times.push(box.motion.endsAtMs);
     }
   }
+  if (state.playerMotion !== null && state.playerMotion.endsAtMs >= state.timeMs && state.playerMotion.endsAtMs <= targetMs) {
+    times.push(state.playerMotion.endsAtMs);
+  }
   for (const input of inputs) {
     if (!state.processedInputKeys.includes(inputKey(input)) && input.atMs >= state.timeMs && input.atMs <= targetMs) {
       times.push(input.atMs);
@@ -158,6 +165,9 @@ function hasDueWorkAtOrBefore(state: GameState, inputs: GameInput[], targetMs: n
   if (state.boxes.some((box) => box.motion !== null && box.motion.endsAtMs <= targetMs)) {
     return true;
   }
+  if (state.playerMotion !== null && state.playerMotion.endsAtMs <= targetMs) {
+    return true;
+  }
   return inputs.some((input) => !state.processedInputKeys.includes(inputKey(input)) && input.atMs <= targetMs);
 }
 
@@ -175,7 +185,9 @@ function processAt(
     return;
   }
 
+  finishPlayerMotionAt(state, config, nowMs);
   processInputsAt(state, config, inputs, events, nowMs);
+  finishPlayerMotionAt(state, config, nowMs);
   if (tryStartClearAnimation(state, config, events, nowMs)) {
     return;
   }
@@ -204,6 +216,20 @@ function processAt(
     return;
   }
   expireComboIfNeeded(state, config, nowMs);
+}
+
+function finishPlayerMotionAt(state: GameState, config: GameConfig, nowMs: number): void {
+  if (state.playerMotion === null || state.playerMotion.endsAtMs > nowMs) {
+    return;
+  }
+  state.player.x = state.playerMotion.toX;
+  state.player.y = state.playerMotion.toY;
+  state.playerMotion = null;
+  const queuedDirection = state.queuedMoveDirection;
+  state.queuedMoveDirection = null;
+  if (queuedDirection !== null) {
+    moveOrPush(state, config, nowMs, queuedDirection);
+  }
 }
 
 function processInputsAt(
@@ -278,7 +304,10 @@ function spawnBox(state: GameState, config: GameConfig, events: GameEvent[], now
   events.push({ type: 'box_spawned', atMs: nowMs, box: { ...box } });
   recalculateSupport(state, config, nowMs);
 
-  if (state.player.x === x && state.player.y === 0) {
+  if (state.playerMotion === null && state.player.x === x && state.player.y === 0) {
+    return 'crushed';
+  }
+  if (state.playerMotion !== null && state.playerMotion.toX === x && state.playerMotion.toY === 0) {
     return 'crushed';
   }
   return null;

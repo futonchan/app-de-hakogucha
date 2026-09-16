@@ -36,6 +36,15 @@ export type Player = {
   facing: Direction;
 };
 
+export type PlayerMotion = {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  startedAtMs: number;
+  endsAtMs: number;
+};
+
 export type GameInput =
   | { atMs: number; seq: number; type: 'move'; direction: Direction }
   | { atMs: number; seq: number; type: 'punch' }
@@ -48,6 +57,8 @@ export type GameState = {
   timeMs: number;
   boxes: Box[];
   player: Player;
+  playerMotion: PlayerMotion | null;
+  queuedMoveDirection: Direction | null;
   score: number;
   combo: number;
   maxCombo: number;
@@ -69,6 +80,7 @@ export type GameConfig = {
   firstSpawnAtMs: number;
   fallStepMs: number;
   pushStepMs: number;
+  playerMoveStepMs: number;
   clearAnimationMs: number;
   comboWindowMs: number;
   minimumConnected: number;

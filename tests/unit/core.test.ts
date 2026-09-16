@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultGameConfig } from '../../src/config';
-import { getBoxDisplayPosition } from '../../src/core/display';
+import { getBoxDisplayPosition, getPlayerDisplayPosition } from '../../src/core/display';
 import { advanceTo, chooseColor, chooseInitialPattern, chooseSpawnColumn, createBox, createGame, createInitialBoxes, finishClearAnimation } from '../../src/core/engine';
 import { findMatchIds } from '../../src/core/matches';
 import { applyClearScore, expireComboIfNeeded } from '../../src/core/scoring';
@@ -27,6 +27,7 @@ describe('board, movement and push acceptance', () => {
     const state = createGame(1, defaultGameConfig);
     expect(defaultGameConfig.columns).toBe(10);
     expect(defaultGameConfig.rows).toBe(12);
+    expect(defaultGameConfig.playerMoveStepMs).toBe(50);
     expect(defaultGameConfig.initialBoxPatterns).toHaveLength(10);
     expect(state.boxes).toHaveLength(20);
     expect(state.boxes.every((box) => box.unbreakable)).toBe(true);
@@ -40,12 +41,39 @@ describe('board, movement and push acceptance', () => {
   it('T-M02/T-M03 moves one orthogonal cell and only turns at walls', () => {
     let state = createGame(1, defaultGameConfig);
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'up' }]).state;
+    expect(state.player).toEqual({ x: 4, y: 9, facing: 'up' });
+    expect(state.playerMotion).toMatchObject({ fromX: 4, fromY: 9, toX: 4, toY: 8, startedAtMs: 1, endsAtMs: 51 });
+    expect(getPlayerDisplayPosition(state, 26)).toEqual({ x: 4, y: 8.5 });
+    state = advanceTo(state, 51).state;
     expect(state.player).toEqual({ x: 4, y: 8, facing: 'up' });
-    state = advanceTo(state, 2, [{ atMs: 2, seq: 2, type: 'move', direction: 'left' }]).state;
+    expect(state.playerMotion).toBeNull();
+    state = advanceTo(state, 52, [{ atMs: 52, seq: 2, type: 'move', direction: 'left' }]).state;
+    expect(state.player).toEqual({ x: 4, y: 8, facing: 'left' });
+    state = advanceTo(state, 102).state;
     expect(state.player).toEqual({ x: 3, y: 8, facing: 'left' });
     state.player = { x: 0, y: 0, facing: 'left' };
-    state = advanceTo(state, 3, [{ atMs: 3, seq: 3, type: 'move', direction: 'up' }]).state;
+    state = advanceTo(state, 103, [{ atMs: 103, seq: 3, type: 'move', direction: 'up' }]).state;
     expect(state.player).toEqual({ x: 0, y: 0, facing: 'up' });
+  });
+
+  it('queues the next direction until the current player move reaches the next cell', () => {
+    let state = stateWith([], { x: 4, y: 9, facing: 'up' });
+    state = advanceTo(state, 25, [
+      { atMs: 1, seq: 1, type: 'move', direction: 'up' },
+      { atMs: 25, seq: 2, type: 'move', direction: 'left' }
+    ]).state;
+
+    expect(state.player).toEqual({ x: 4, y: 9, facing: 'left' });
+    expect(state.playerMotion).toMatchObject({ fromX: 4, fromY: 9, toX: 4, toY: 8, endsAtMs: 51 });
+    expect(state.queuedMoveDirection).toBe('left');
+
+    state = advanceTo(state, 51).state;
+    expect(state.player).toEqual({ x: 4, y: 8, facing: 'left' });
+    expect(state.playerMotion).toMatchObject({ fromX: 4, fromY: 8, toX: 3, toY: 8, startedAtMs: 51, endsAtMs: 101 });
+
+    state = advanceTo(state, 101).state;
+    expect(state.player).toEqual({ x: 3, y: 8, facing: 'left' });
+    expect(state.playerMotion).toBeNull();
   });
 
   it('keeps all configured initial patterns in the bottom two rows without starting matches', () => {
@@ -237,7 +265,7 @@ describe('board, movement and push acceptance', () => {
 
   it('allows entering the vacated pushed cell only after release and re-input', () => {
     let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
-    state = advanceTo(state, 602, [
+    state = advanceTo(state, 652, [
       { atMs: 1, seq: 1, type: 'move', direction: 'right' },
       { atMs: 301, seq: 2, type: 'move', direction: 'right' },
       { atMs: 601, seq: 3, type: 'release', direction: 'right' },
@@ -284,7 +312,7 @@ describe('punch acceptance', () => {
     expect(state.boxes).toHaveLength(0);
     expect(state.player).toEqual({ x: 4, y: 11, facing: 'up' });
 
-    state = advanceTo(state, 3, [
+    state = advanceTo(state, 53, [
       { atMs: 2, seq: 2, type: 'release', direction: 'up' },
       { atMs: 3, seq: 3, type: 'move', direction: 'up' }
     ]).state;

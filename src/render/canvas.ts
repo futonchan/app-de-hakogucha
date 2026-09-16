@@ -1,5 +1,5 @@
 import { directionDeltas } from '../core/board';
-import { getBoxDisplayPosition, getClearEffectOpacity } from '../core/display';
+import { getBoxDisplayPosition, getClearEffectOpacity, getPlayerDisplayPosition } from '../core/display';
 import type { Box, GameConfig, GameState } from '../core/types';
 
 const colors: Record<Box['color'], string> = {
@@ -113,8 +113,9 @@ export class CanvasRenderer {
   }
 
   private drawPlayer(state: GameState, cell: number): void {
-    const cx = state.player.x * cell + cell / 2;
-    const cy = state.player.y * cell + cell / 2;
+    const display = getPlayerDisplayPosition(state, state.timeMs);
+    const cx = display.x * cell + cell / 2;
+    const cy = display.y * cell + cell / 2;
     const radius = cell * 0.36;
     const delta = directionDeltas[state.player.facing];
     this.ctx.fillStyle = '#ffd166';

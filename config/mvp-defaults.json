@@ -157,6 +157,7 @@
     "animation": {
       "fallStepAnimationMs": 250,
       "pushStepAnimationMs": 250,
+      "playerMoveAnimationMs": 50,
       "clearBlinkMs": 500,
       "clearEffectRendererOnly": true,
       "worldTimeStopsDuringClearBlink": true,

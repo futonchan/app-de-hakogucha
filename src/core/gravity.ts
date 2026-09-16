@@ -43,7 +43,10 @@ export function applyGravity(state: GameState, config: GameConfig, nowMs: number
     }
     box.y += 1;
     movedIds.push(box.id);
-    if (box.x === state.player.x && box.y === state.player.y) {
+    if (state.playerMotion === null && box.x === state.player.x && box.y === state.player.y) {
+      crushed = true;
+    }
+    if (state.playerMotion !== null && box.x === state.playerMotion.toX && box.y === state.playerMotion.toY) {
       crushed = true;
     }
   }

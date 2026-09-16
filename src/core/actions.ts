@@ -6,6 +6,10 @@ export function moveOrPush(state: GameState, config: GameConfig, nowMs: number, 
   if (state.movementLocks.includes(direction)) {
     return;
   }
+  if (state.playerMotion !== null) {
+    state.queuedMoveDirection = direction;
+    return;
+  }
   const delta = directionDeltas[direction];
   const targetX = state.player.x + delta.dx;
   const targetY = state.player.y + delta.dy;
@@ -16,11 +20,17 @@ export function moveOrPush(state: GameState, config: GameConfig, nowMs: number, 
   const occupancy = buildOccupancy(state.boxes);
   const targetBox = occupancy.get(cellKey(targetX, targetY));
   if (!targetBox) {
-    if (hasReservedCell(state.boxes, targetX, targetY)) {
+    if (hasReservedCell(state.boxes, targetX, targetY) || isPushDestinationBlocked(state.boxes, config, targetX, targetY)) {
       return;
     }
-    state.player.x = targetX;
-    state.player.y = targetY;
+    state.playerMotion = {
+      fromX: state.player.x,
+      fromY: state.player.y,
+      toX: targetX,
+      toY: targetY,
+      startedAtMs: nowMs,
+      endsAtMs: nowMs + config.playerMoveStepMs
+    };
     return;
   }
   if (targetBox.nextFallAtMs !== null || targetBox.motion !== null) {

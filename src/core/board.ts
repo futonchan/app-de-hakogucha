@@ -113,8 +113,16 @@ export function assertValidState(state: GameState, config: GameConfig): void {
     if (!isInside(config, state.player.x, state.player.y)) {
       throw new Error('Player is outside the board');
     }
-    if (occupied.has(cellKey(state.player.x, state.player.y))) {
+    if (state.playerMotion === null && occupied.has(cellKey(state.player.x, state.player.y))) {
       throw new Error('Player overlaps a box while playing');
+    }
+    if (state.playerMotion !== null) {
+      if (!isInside(config, state.playerMotion.toX, state.playerMotion.toY)) {
+        throw new Error('Player motion target is outside the board');
+      }
+      if (occupied.has(cellKey(state.playerMotion.toX, state.playerMotion.toY))) {
+        throw new Error('Player motion target overlaps a box while playing');
+      }
     }
   }
   if (!Number.isInteger(state.score) || state.score < 0) {
