@@ -27,6 +27,18 @@ export function hasReservedCell(boxes: Box[], x: number, y: number): boolean {
   return boxes.some((box) => box.motion !== null && box.motion.toX === x && box.motion.toY === y);
 }
 
+export function isPushDestinationBlocked(boxes: Box[], config: GameConfig, x: number, y: number): boolean {
+  return boxes.some((box) => {
+    if (box.x === x && box.y === y) {
+      return true;
+    }
+    if (box.motion !== null) {
+      return (box.motion.fromX === x && box.motion.fromY === y) || (box.motion.toX === x && box.motion.toY === y);
+    }
+    return box.nextFallAtMs !== null && box.x === x && box.y + 1 === y && isInside(config, x, y);
+  });
+}
+
 export function isBoxMovingOrDue(box: Box, config: GameConfig, nowMs: number): boolean {
   if (box.motion !== null) {
     return box.motion.startedAtMs <= nowMs && nowMs <= box.motion.endsAtMs;

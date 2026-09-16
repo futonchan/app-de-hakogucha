@@ -116,6 +116,7 @@
     "push": {
       "distanceCells": 1,
       "blockedByOtherBox": true,
+      "blockedByMovingOrFallingReservedCell": true,
       "playerStaysOnSuccessfulPush": true,
       "fallingBoxesCanBePushed": false,
       "heldDirectionDoesNotBecomeMoveAfterPush": true

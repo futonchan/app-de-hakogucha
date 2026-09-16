@@ -120,6 +120,45 @@ describe('board, movement and push acceptance', () => {
     expect(state.boxes[0]).toMatchObject({ x: 2, y: 10, nextFallAtMs: 250 });
   });
 
+  it('blocks pushing into a falling box logical cell', () => {
+    const state = stateWith(
+      [createBox(1, 'green', 2, 10), createBox(2, 'blue', 2, 11), createBox(3, 'red', 3, 10, 1, 260)],
+      { x: 1, y: 10, facing: 'right' }
+    );
+    const result = advanceTo(state, 10, [{ atMs: 10, seq: 1, type: 'move', direction: 'right' }]);
+
+    expect(result.state.player).toEqual({ x: 1, y: 10, facing: 'right' });
+    expect(result.state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 10, motion: null });
+    expect(result.state.boxes.find((box) => box.id === 3)).toMatchObject({ x: 3, y: 10, nextFallAtMs: 260 });
+  });
+
+  it('blocks pushing into a falling box reserved landing cell during its animation', () => {
+    const state = stateWith(
+      [createBox(1, 'red', 2, 11), createBox(2, 'green', 3, 10, 1, 251)],
+      { x: 1, y: 11, facing: 'right' }
+    );
+    const result = advanceTo(state, 126, [{ atMs: 126, seq: 1, type: 'move', direction: 'right' }]);
+
+    expect(getBoxDisplayPosition(result.state.boxes.find((box) => box.id === 2)!, 126, defaultGameConfig)).toEqual({ x: 3, y: 10.5 });
+    expect(result.state.player).toEqual({ x: 1, y: 11, facing: 'right' });
+    expect(result.state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 11, motion: null });
+    expect(result.state.boxes.find((box) => box.id === 2)).toMatchObject({ x: 3, y: 10, nextFallAtMs: 251 });
+  });
+
+  it('allows pushing after a falling box vacates the destination cell and lands elsewhere', () => {
+    let state = stateWith(
+      [createBox(1, 'red', 2, 10), createBox(2, 'blue', 2, 11), createBox(3, 'green', 3, 10, 1, 250)],
+      { x: 1, y: 10, facing: 'right' }
+    );
+
+    state = advanceTo(state, 250).state;
+    expect(state.boxes.find((box) => box.id === 3)).toMatchObject({ x: 3, y: 11, nextFallAtMs: null });
+
+    state = advanceTo(state, 251, [{ atMs: 251, seq: 1, type: 'move', direction: 'right' }]).state;
+    expect(state.player).toEqual({ x: 1, y: 10, facing: 'right' });
+    expect(state.boxes.find((box) => box.id === 1)).toMatchObject({ x: 2, y: 10, motion: { toX: 3, toY: 10, endsAtMs: 501 } });
+  });
+
   it('T-M13-T-M15 allows supported boxes to be pushed and still blocks occupied destinations', () => {
     let state = stateWith([createBox(1, 'red', 2, 11)], { x: 1, y: 11, facing: 'right' });
     state = advanceTo(state, 1, [{ atMs: 1, seq: 1, type: 'move', direction: 'right' }]).state;
